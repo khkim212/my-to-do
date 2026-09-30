@@ -1,0 +1,1572 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Minimal Todo</title>
+    
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Minimal Todo">
+    <meta name="theme-color" content="#F2F2F7">
+    <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23000'/%3E%3Cpath d='M30 50 L45 65 L70 35' stroke='%23fff' stroke-width='8' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        ios: {
+                            bg: '#F2F2F7', card: '#FFFFFF', text: '#000000',
+                            muted: '#8E8E93', border: '#E5E5EA', blue: '#007AFF',
+                            red: '#FF3B30', orange: '#FF9500', purple: '#AF52DE', green: '#34C759'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+        :root {
+            --ios-bg: #F2F2F7; --ios-text: #000000; --ios-border: #E5E5EA;
+            --ios-card: #FFFFFF; --ios-muted: #8E8E93; --ios-purple: #AF52DE;
+        }
+        body {
+            background-color: var(--ios-bg); color: var(--ios-text);
+            -webkit-font-smoothing: antialiased; -webkit-user-select: none; user-select: none;
+        }
+        input[type="text"], input[type="date"] { -webkit-user-select: auto; user-select: auto; }
+        ::-webkit-scrollbar { width: 0px; background: transparent; }
+
+        .ios-checkbox {
+            appearance: none; width: 26px; height: 26px; border: 2px solid var(--ios-border);
+            border-radius: 50%; outline: none; cursor: pointer; position: relative;
+            transition: all 0.2s ease-in-out; background-color: var(--ios-card);
+        }
+        .ios-checkbox:checked { background-color: var(--ios-text); border-color: var(--ios-text); }
+        .ios-checkbox:checked::after {
+            content: ''; position: absolute; top: 45%; left: 50%; transform: translate(-50%, -50%) rotate(45deg);
+            width: 6px; height: 12px; border: solid white; border-width: 0 2px 2px 0;
+        }
+
+        .completed-text { color: var(--ios-muted); text-decoration: line-through; transition: all 0.3s ease; }
+        
+        .calendar-day {
+            aspect-ratio: 1; display: flex; flex-direction: column; align-items: center;
+            justify-content: center; border-radius: 50%; cursor: pointer; transition: all 0.2s;
+            position: relative; font-size: 15px;
+        }
+        .calendar-day:hover:not(.empty) { background-color: #E5E5EA; }
+        .calendar-day.empty { cursor: default; }
+        .calendar-day.selected { background-color: #000000 !important; color: #FFFFFF !important; }
+        .calendar-day.selected span { color: #FFFFFF !important; }
+        .calendar-day.selected .day-stat { color: rgba(255,255,255,0.8) !important; }
+        .calendar-day.today:not(.selected) { color: #007AFF; font-weight: 700; }
+
+        .habit-badge {
+            position: absolute; top: -2px; right: -2px;
+            color: white; border-radius: 50%; width: 14px; height: 14px; display: flex;
+            align-items: center; justify-content: center; font-size: 8px; font-weight: bold;
+            border: 2px solid white; z-index: 20; box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+        }
+        .day-stat { position: absolute; top: 0; right: 0; font-size: 8px; font-weight: 700; }
+
+        .segmented-control { background-color: #E5E5EA; padding: 2px; border-radius: 8px; display: flex; }
+        .segment-btn { flex: 1; text-align: center; padding: 4px 12px; font-size: 13px; font-weight: 600; border-radius: 6px; color: var(--ios-text); transition: all 0.2s; }
+        .segment-btn.active { background-color: white; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+
+        .tag-btn {
+            padding: 4px 12px; border-radius: 16px; font-size: 12px; font-weight: 600;
+            background-color: #F2F2F7; color: var(--ios-muted); transition: all 0.2s; border: 1px solid transparent;
+        }
+        .tag-btn.active { background-color: var(--ios-text); color: white; }
+        .tag-btn.active-daily { background-color: var(--ios-purple); color: white; }
+
+        .todo-item { animation: slideIn 0.3s ease forwards; }
+        .todo-item.pressing { transform: scale(0.98); background-color: #F9F9F9; transition: transform 0.2s, background-color 0.2s; }
+        @keyframes slideIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        
+        .drag-handle { cursor: grab; touch-action: none; }
+        .drag-handle:active { cursor: grabbing; }
+        .sortable-ghost { opacity: 0.3; background-color: #F2F2F7; border-radius: 16px; }
+
+        .progress-ring__circle { transition: stroke-dashoffset 0.3s; transform: rotate(-90deg); transform-origin: 50% 50%; }
+        .overlay-input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; z-index: 10; }
+        
+        .tracker-drag-handle { touch-action: none; }
+        #storage-status { border: 1px solid #F5C16C; background: #FFF7E6; color: #704000; padding: 12px; border-radius: 12px; margin-bottom: 12px; font-size: 13px; }
+        #storage-status[hidden] { display: none; }
+        .storage-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+        .storage-actions button { background: #FFFFFF; border: 1px solid #DDD; border-radius: 8px; padding: 6px 10px; font-size: 12px; cursor: pointer; }
+        .storage-actions button:focus-visible { outline: 2px solid #007AFF; outline-offset: 2px; }
+        #todo-entry { scroll-margin-block: 24px; }
+        .day-nav-button { width: 36px; height: 40px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 12px; color: #8E8E93; }
+        .day-nav-button:hover { background: #F2F2F7; color: #000; }
+        .day-nav-button:focus-visible { outline: 2px solid #007AFF; outline-offset: 2px; }
+        #move-date-modal[hidden], #edit-todo-modal[hidden] { display: none; }
+        #undo-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    </style>
+</head>
+<body class="min-h-screen flex items-start justify-center p-0 md:p-8">
+
+    <div class="w-full max-w-5xl md:rounded-[40px] md:shadow-2xl bg-ios-bg overflow-hidden flex flex-col md:flex-row min-h-screen md:min-h-[800px] border-x md:border border-gray-200">
+        
+        <!-- Left Panel: Calendar & Tracker -->
+        <div class="w-full md:w-80 bg-[#F2F2F7] flex flex-col p-6 border-b md:border-b-0 md:border-r border-gray-200 shrink-0">
+            
+            <div class="flex items-center justify-between mb-8">
+                <div>
+                    <h1 id="today-header" class="text-3xl font-extrabold tracking-tight cursor-pointer hover:opacity-70 transition-opacity" title="Return to Today">Today</h1>
+                    <p id="today-date-text" class="text-ios-muted font-medium mt-1"></p>
+                </div>
+                
+                <!-- Left Progress Ring (Always shows TODAY's progress) -->
+                <div id="progress-ring-container-left" class="relative w-14 h-14 transition-opacity duration-300" title="오늘 달성률 · 일반 할 일과 Daily 포함">
+                    <svg class="w-full h-full" viewBox="0 0 36 36">
+                        <path class="text-gray-300" stroke-width="3" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                        <path id="progress-ring-path-left" class="text-black progress-ring__circle" stroke-width="3" stroke-dasharray="100, 100" stroke-dashoffset="100" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" stroke-linecap="round" />
+                    </svg>
+                    <div id="progress-text-left" class="absolute inset-0 flex items-center justify-center text-[10px] font-bold">0%</div>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-3xl p-5 shadow-sm mb-6">
+                <div class="flex justify-between items-center mb-4 px-1">
+                    <h2 id="calendar-month-year" class="text-lg font-bold"></h2>
+                    <div class="flex gap-2">
+                        <button id="prev-month" class="text-ios-text hover:opacity-50 p-1"><i class="ph-bold ph-caret-left text-xl pointer-events-none"></i></button>
+                        <button id="next-month" class="text-ios-text hover:opacity-50 p-1"><i class="ph-bold ph-caret-right text-xl pointer-events-none"></i></button>
+                    </div>
+                </div>
+                <div class="grid grid-cols-7 gap-1 text-center mb-2">
+                    <div class="text-[10px] font-bold text-ios-muted">S</div><div class="text-[10px] font-bold text-ios-muted">M</div>
+                    <div class="text-[10px] font-bold text-ios-muted">T</div><div class="text-[10px] font-bold text-ios-muted">W</div>
+                    <div class="text-[10px] font-bold text-ios-muted">T</div><div class="text-[10px] font-bold text-ios-muted">F</div>
+                    <div class="text-[10px] font-bold text-ios-muted">S</div>
+                </div>
+                <div id="calendar-grid" class="grid grid-cols-7 gap-y-2 gap-x-1"></div>
+            </div>
+
+            <div class="bg-white rounded-3xl p-5 shadow-sm flex-1 flex flex-col min-h-[250px]">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-sm font-bold flex items-center gap-1.5"><i class="ph-fill ph-leaf text-ios-green"></i> Habits Tracker</h3>
+                </div>
+                <div id="tracker-container" class="flex flex-col gap-1 overflow-y-auto pr-1 pb-4"></div>
+            </div>
+        </div>
+
+        <div id="todo-day-panel" class="flex-1 bg-white flex flex-col h-screen md:h-auto relative">
+            <div class="p-6 md:p-8 flex flex-col h-full">
+                <div id="storage-status" role="status" aria-live="polite" hidden>
+                    <p id="storage-message"></p>
+                    <div class="storage-actions">
+                        <button id="storage-retry" type="button">저장 재시도</button>
+                        <button id="storage-original" type="button">원본과 미저장 내용 내려받기</button>
+                        <button id="storage-reset" type="button">새 목록 시작</button>
+                    </div>
+                </div>
+                <div class="storage-actions mb-4 shrink-0">
+                    <button id="undo-btn" type="button" disabled title="이 창에서 편집한 최근 10건까지 되돌립니다.">되돌리기 (0/10)</button>
+                    <button id="backup-export" type="button">JSON 백업</button>
+                    <button id="backup-import" type="button">백업 파일 복구</button>
+                    <input id="backup-file" type="file" accept=".json,application/json" hidden>
+                </div>
+                <p id="undo-status" class="text-xs text-ios-muted mb-3" role="status" aria-live="polite"></p>
+                
+                <!-- Header with Right Progress Ring -->
+                <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-6 shrink-0">
+                    <div class="flex items-center justify-between w-full lg:w-auto gap-4">
+                        <div class="flex items-center gap-1 min-w-0">
+                            <button id="prev-day" class="day-nav-button" type="button" aria-label="전날로 이동" title="전날로 이동">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m15 5-7 7 7 7" /></svg>
+                            </button>
+                            <div class="min-w-0" aria-live="polite" aria-atomic="true">
+                                <h2 id="selected-date-display" class="text-2xl font-bold tracking-tight"></h2>
+                                <p id="selected-day-display" class="text-sm text-ios-muted font-medium"></p>
+                            </div>
+                            <button id="next-day" class="day-nav-button" type="button" aria-label="다음날로 이동" title="다음날로 이동">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m9 5 7 7-7 7" /></svg>
+                            </button>
+                        </div>
+                        
+                        <!-- Right Progress Ring (Always shows SELECTED DATE's progress) -->
+                        <div class="relative w-11 h-11 shrink-0" title="선택 날짜 달성률 · 일반 할 일과 Daily 포함">
+                            <svg class="w-full h-full" viewBox="0 0 36 36">
+                                <path class="text-gray-100" stroke-width="4" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                                <path id="progress-ring-path-right" class="text-black progress-ring__circle" stroke-width="4" stroke-dasharray="100, 100" stroke-dashoffset="100" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" stroke-linecap="round" />
+                            </svg>
+                            <div id="progress-text-right" class="absolute inset-0 flex items-center justify-center text-[10px] font-bold">0%</div>
+                        </div>
+                    </div>
+                    
+                    <div class="segmented-control w-full lg:w-auto">
+                        <button class="segment-btn active" data-filter="all">All</button>
+                        <button class="segment-btn" data-filter="active">Active</button>
+                        <button class="segment-btn" data-filter="completed">Done</button>
+                    </div>
+                </div>
+
+                <!-- Input Area (Moved to Top) -->
+                <div id="todo-entry" class="mb-4 shrink-0 bg-[#F2F2F7] rounded-3xl p-3">
+                    <div class="flex gap-2 mb-2.5">
+                        <input type="text" id="todo-input" class="flex-1 bg-transparent px-2 outline-none text-base font-medium placeholder-ios-muted" placeholder="Add a new task...">
+                        <button id="add-btn" class="bg-black text-white w-10 h-10 rounded-xl flex items-center justify-center active:scale-95 transition-transform shrink-0 shadow-sm">
+                            <i class="ph-bold ph-arrow-up text-lg"></i>
+                        </button>
+                    </div>
+                    <!-- Input Tags -->
+                    <div class="flex gap-1.5 overflow-x-auto px-1" id="input-tags">
+                        <button class="tag-btn active !bg-white shadow-sm !text-black !px-2.5 !py-1 !text-[10px]" data-tag="none">None</button>
+                        <button class="tag-btn text-ios-red !px-2.5 !py-1 !text-[10px]" data-tag="important">🔥 Important</button>
+                        <button class="tag-btn text-ios-blue !px-2.5 !py-1 !text-[10px]" data-tag="work">💻 Work</button>
+                        <button class="tag-btn text-ios-orange !px-2.5 !py-1 !text-[10px]" data-tag="personal">☕ Personal</button>
+                        <button class="tag-btn text-ios-purple !px-2.5 !py-1 !text-[10px]" data-tag="daily">🔄 Daily</button>
+                    </div>
+                </div>
+
+                <!-- Tag Filters for List -->
+                <div class="flex gap-2 mb-4 shrink-0 overflow-x-auto pb-2" id="tag-filters-container">
+                    <button class="filter-btn tag-btn bg-ios-text text-white px-3 py-1 text-[11px]" data-tag="all">All Tags</button>
+                    <button class="filter-btn tag-btn px-3 py-1 text-[11px]" data-tag="important">🔥 Important</button>
+                    <button class="filter-btn tag-btn px-3 py-1 text-[11px]" data-tag="work">💻 Work</button>
+                    <button class="filter-btn tag-btn px-3 py-1 text-[11px]" data-tag="personal">☕ Personal</button>
+                    <button class="filter-btn tag-btn px-3 py-1 text-[11px]" data-tag="daily">🔄 Daily</button>
+                </div>
+
+                <!-- Todo List -->
+                <p class="text-[10px] text-ios-muted mb-2">Important → Daily → 기타 순서 · 같은 그룹 안에서 드래그</p>
+                <div class="flex-1 overflow-y-auto pr-2 pb-20 md:pb-0" id="todo-container">
+                    <ul id="todo-list" class="space-y-2"></ul>
+                    <div id="empty-state" class="hidden h-full flex flex-col items-center justify-center text-ios-muted opacity-80 mt-6">
+                        <i class="ph-thin ph-check-circle text-6xl mb-3"></i>
+                        <p class="text-base font-medium text-black">All Done!</p>
+                        <p class="text-sm mt-1">Enjoy your day.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="edit-todo-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40" role="dialog" aria-modal="true" aria-labelledby="edit-todo-title" hidden>
+        <div class="bg-white rounded-3xl p-6 w-11/12 max-w-sm shadow-2xl">
+            <h3 id="edit-todo-title" class="text-xl font-bold mb-2">할 일 내용 수정</h3>
+            <label for="modal-edit-todo-input" class="block text-sm text-gray-500 mb-4">수정할 내용을 입력하세요.</label>
+            <input type="text" id="modal-edit-todo-input" class="w-full bg-[#F2F2F7] rounded-xl px-4 py-3 mb-2 font-medium">
+            <p id="edit-todo-error" class="text-sm text-ios-red mb-4" role="alert"></p>
+            <div class="flex gap-2.5">
+                <button id="btn-edit-todo-cancel" type="button" class="flex-1 py-3.5 bg-gray-100 text-black rounded-2xl font-bold">취소</button>
+                <button id="btn-edit-todo-save" type="button" class="flex-1 py-3.5 bg-ios-blue text-white rounded-2xl font-bold">저장</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="move-date-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40" role="dialog" aria-modal="true" aria-labelledby="move-date-title" hidden>
+        <div class="bg-white rounded-3xl p-6 w-11/12 max-w-sm shadow-2xl">
+            <h3 id="move-date-title" class="text-xl font-bold mb-2">할 일 날짜 이동</h3>
+            <label for="modal-move-date-input" class="block text-sm text-gray-500 mb-4">옮길 날짜를 선택하세요.</label>
+            <input type="date" id="modal-move-date-input" class="w-full bg-[#F2F2F7] rounded-xl px-4 py-3 mb-2 font-medium">
+            <p id="move-date-error" class="text-sm text-ios-red mb-4" role="alert"></p>
+            <div class="flex gap-2.5">
+                <button id="btn-move-date-cancel" type="button" class="flex-1 py-3.5 bg-gray-100 text-black rounded-2xl font-bold">취소</button>
+                <button id="btn-move-date-continue" type="button" class="flex-1 py-3.5 bg-ios-blue text-white rounded-2xl font-bold">다음</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="postpone-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 opacity-0 pointer-events-none transition-opacity duration-200">
+        <div class="bg-white rounded-3xl p-6 w-11/12 max-w-sm shadow-2xl transform scale-95 transition-transform duration-200" id="postpone-modal-content">
+            <h3 class="text-xl font-bold mb-2">일정 미루기</h3>
+            <p class="text-sm text-gray-500 mb-6 leading-relaxed">선택하신 날짜로 일정을 옮깁니다.<br><span class="font-semibold text-ios-orange">미루기 카운트</span>를 기록하여 횟수를 늘릴까요?</p>
+            <div class="flex flex-col gap-2.5">
+                <button id="btn-postpone-yes" class="w-full py-3.5 bg-ios-orange text-white rounded-2xl font-bold shadow-sm active:scale-95 transition-transform">예, 미루기 카운트 추가</button>
+                <button id="btn-postpone-no" class="w-full py-3.5 bg-gray-100 text-black hover:bg-gray-200 rounded-2xl font-bold active:scale-95 transition-transform">아니요, 단순 이동</button>
+                <button id="btn-postpone-cancel" class="w-full py-3.5 text-gray-400 font-semibold hover:text-black">취소</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Start Date Modal for Daily Tasks -->
+    <div id="start-date-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 opacity-0 pointer-events-none transition-opacity duration-200">
+        <div class="bg-white rounded-3xl p-6 w-11/12 max-w-sm shadow-2xl transform scale-95 transition-transform duration-200" id="start-date-modal-content">
+            <h3 class="text-xl font-bold mb-2">시작일 설정</h3>
+            <p class="text-sm text-gray-500 mb-6 leading-relaxed">선택하신 날짜부터 매일 반복됩니다.</p>
+            <input type="date" id="modal-start-date-input" class="w-full bg-[#F2F2F7] rounded-xl px-4 py-3 mb-6 focus:outline-none font-medium">
+            <div class="flex gap-2.5">
+                <button id="btn-start-date-cancel" class="flex-1 py-3.5 bg-gray-100 text-black hover:bg-gray-200 rounded-2xl font-bold active:scale-95 transition-transform">취소</button>
+                <button id="btn-start-date-save" class="flex-1 py-3.5 bg-ios-purple text-white rounded-2xl font-bold shadow-sm active:scale-95 transition-transform">저장</button>
+            </div>
+            <input type="hidden" id="modal-start-target-id">
+        </div>
+    </div>
+
+    <script id="todo-model">
+// Pure date, habit and ordering rules. Kept independent of the DOM and storage.
+globalThis.TodoModel = (() => {
+    'use strict';
+    const TAGS = new Set(['none', 'important', 'work', 'personal', 'daily']);
+    const DAY_MS = 86400000;
+    const own = (object, key) => Object.prototype.hasOwnProperty.call(object, key);
+
+    const isDateKey = value => {
+        if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+        const [year, month, day] = value.split('-').map(Number);
+        if (year < 1 || month < 1 || month > 12 || day < 1) return false;
+        const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+        return day <= [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1];
+    };
+
+    const formatDate = value => {
+        if (typeof value === 'string') {
+            if (!isDateKey(value)) throw new Error('유효하지 않은 날짜입니다.');
+            return value;
+        }
+        if (Object.prototype.toString.call(value) !== '[object Date]' || !Number.isFinite(value.getTime())) {
+            throw new Error('유효하지 않은 날짜입니다.');
+        }
+        const key = `${String(value.getFullYear()).padStart(4, '0')}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`;
+        if (!isDateKey(key)) throw new Error('지원하지 않는 날짜 범위입니다.');
+        return key;
+    };
+
+    const shiftMonth = (value, delta) => {
+        if (!Number.isSafeInteger(delta)) throw new Error('월 이동 값이 올바르지 않습니다.');
+        const [year, month] = formatDate(value).split('-').map(Number);
+        // setFullYear also handles years 1–99 without the Date constructor's 1900 offset.
+        const result = new Date(0);
+        result.setHours(0, 0, 0, 0);
+        result.setFullYear(year, month - 1 + delta, 1);
+        formatDate(result);
+        return result;
+    };
+
+    const dayNumber = key => {
+        const [year, month, day] = formatDate(key).split('-').map(Number);
+        const date = new Date(0);
+        date.setUTCFullYear(year, month - 1, day);
+        date.setUTCHours(0, 0, 0, 0);
+        return date.getTime() / DAY_MS;
+    };
+
+    const hasStarted = (todo, dateKey) => isDateKey(todo.date) && isDateKey(dateKey) && todo.date <= dateKey;
+
+    const habitStats = (todo, todayKey) => {
+        const startKey = formatDate(todo.date);
+        formatDate(todayKey);
+        const started = startKey <= todayKey;
+        const totalDays = started ? dayNumber(todayKey) - dayNumber(startKey) + 1 : 0;
+        const completedCount = new Set((Array.isArray(todo.completedDates) ? todo.completedDates : [])
+            .filter(date => isDateKey(date) && date >= startKey && date <= todayKey)).size;
+        const rate = totalDays ? Math.round(completedCount / totalDays * 100) : 0;
+        return { totalDays, completedCount, rate, started };
+    };
+
+    const changeTag = (todo, newTag, selectedDateKey) => {
+        if (!TAGS.has(newTag)) throw new Error('지원하지 않는 태그입니다.');
+        formatDate(selectedDateKey);
+        if (todo.tag === newTag) return { ...todo };
+        const completedDates = Array.isArray(todo.completedDates) ? [...todo.completedDates] : [];
+        if (todo.tag === 'daily') {
+            return { ...todo, tag: newTag, habitStartDate: todo.date, date: selectedDateKey,
+                completed: completedDates.includes(selectedDateKey), completedDates };
+        }
+        if (newTag === 'daily') {
+            // A persisted start date distinguishes an existing habit from its first conversion.
+            const previousStart = isDateKey(todo.habitStartDate) ? todo.habitStartDate : null;
+            const startDate = previousStart || selectedDateKey;
+            return { ...todo, tag: newTag, date: startDate, habitStartDate: startDate,
+                completedDates: previousStart ? completedDates : (todo.completed ? [selectedDateKey] : []) };
+        }
+        return { ...todo, tag: newTag };
+    };
+
+    const order = value => Number.isFinite(value) ? value : Number.MAX_SAFE_INTEGER;
+    const compareIds = (a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+    const compareHabits = (a, b) => order(a.habitOrder) - order(b.habitOrder)
+        || order(a.orderIndex) - order(b.orderIndex) || compareIds(a, b);
+    const group = todo => todo.tag === 'important' ? 0 : todo.tag === 'daily' ? 1 : 2;
+    const compareTodos = (a, b) => group(a) - group(b)
+        || (a.tag === 'daily' && b.tag === 'daily' ? compareHabits(a, b)
+            : order(a.orderIndex) - order(b.orderIndex) || compareIds(a, b));
+
+    const normalizeTodos = value => {
+        if (!Array.isArray(value)) throw new Error('저장 데이터는 할 일 배열이어야 합니다.');
+        const ids = new Set();
+        let changed = false;
+        const todos = value.map((entry, index) => {
+            const fail = field => { throw new Error(`${index + 1}번째 항목의 ${field} 값이 올바르지 않습니다.`); };
+            if (!entry || typeof entry !== 'object' || Array.isArray(entry)) fail('구조');
+            if (typeof entry.id !== 'string' || !/^[A-Za-z0-9_-]+$/.test(entry.id)) fail('id');
+            if (ids.has(entry.id)) fail('중복 id');
+            ids.add(entry.id);
+            if (typeof entry.text !== 'string' || !entry.text.trim()) fail('내용');
+            if (!isDateKey(entry.date)) fail('날짜');
+            if (own(entry, 'tag') && !TAGS.has(entry.tag)) fail('태그');
+            if (own(entry, 'completed') && typeof entry.completed !== 'boolean') fail('완료 상태');
+            if (own(entry, 'postponedCount') && (!Number.isSafeInteger(entry.postponedCount) || entry.postponedCount < 0)) fail('미룬 횟수');
+            if (own(entry, 'completedDates') && (!Array.isArray(entry.completedDates) || !entry.completedDates.every(isDateKey))) fail('완료일');
+            for (const key of ['orderIndex', 'habitOrder']) {
+                if (own(entry, key) && (!Number.isSafeInteger(entry[key]) || entry[key] < 0)) fail(key);
+            }
+            if (own(entry, 'habitStartDate') && !isDateKey(entry.habitStartDate)) fail('습관 시작일');
+
+            // Retain unknown fields so reading an older/newer backup never silently drops data.
+            const todo = { ...entry,
+                tag: own(entry, 'tag') ? entry.tag : 'none',
+                completed: own(entry, 'completed') ? entry.completed : false,
+                postponedCount: own(entry, 'postponedCount') ? entry.postponedCount : 0,
+                completedDates: [...new Set(entry.completedDates || [])],
+                orderIndex: own(entry, 'orderIndex') ? entry.orderIndex : index
+            };
+            if (todo.tag === 'daily') {
+                // date remains the active habit's canonical start date for legacy compatibility.
+                todo.habitStartDate = todo.date;
+            } else if (!own(todo, 'habitStartDate') && todo.completedDates.length) {
+                // Legacy tag changes lost the original start, but kept completions. Preserve
+                // the earliest surviving date instead of resetting the history on return.
+                todo.habitStartDate = [todo.date, ...todo.completedDates].sort()[0];
+            }
+            if (JSON.stringify(entry) !== JSON.stringify(todo)) changed = true;
+            return todo;
+        });
+        return { todos, changed };
+    };
+
+    return Object.freeze({ isDateKey, formatDate, shiftMonth, hasStarted, habitStats,
+        changeTag, compareTodos, compareHabits, normalizeTodos });
+})();
+    </script>
+
+    <script id="todo-store">
+// Immutable change records keep independent tabs from overwriting one shared array.
+globalThis.TodoStore = (() => {
+    const LEGACY_KEY = 'minimalTodos';
+    const PREFIX = 'minimalTodos.v2.op.';
+    const fields = ['text', 'date', 'tag', 'completed', 'postponedCount', 'habitStartDate', 'habitOrder', 'orderIndex'];
+    const clone = value => JSON.parse(JSON.stringify(value));
+    const equal = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+    const makeId = () => {
+        if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
+        const bytes = new Uint8Array(16);
+        globalThis.crypto.getRandomValues(bytes);
+        return Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('');
+    };
+    const normalize = value => TodoModel.normalizeTodos(value).todos;
+    const keyClock = key => {
+        const match = key.slice(PREFIX.length).match(/^(\d{16,})_[A-Za-z0-9_-]+$/);
+        return match ? BigInt(match[1]) : null;
+    };
+    const diff = (before, after) => {
+        const previous = new Map(before.map(todo => [todo.id, todo]));
+        const next = new Map(after.map(todo => [todo.id, todo]));
+        const changes = before.filter(todo => !next.has(todo.id)).map(todo => ({kind: 'remove', id: todo.id}));
+        after.forEach(todo => {
+            const old = previous.get(todo.id);
+            if (!old) { changes.push({kind: 'create', todo}); return; }
+            const set = {}, unset = [];
+            fields.forEach(field => {
+                if (!equal(old[field], todo[field])) {
+                    if (todo[field] === undefined) unset.push(field);
+                    else set[field] = todo[field];
+                }
+            });
+            const added = (todo.completedDates || []).filter(date => !(old.completedDates || []).includes(date));
+            const removed = (old.completedDates || []).filter(date => !(todo.completedDates || []).includes(date));
+            if (Object.keys(set).length || unset.length || added.length || removed.length) {
+                changes.push({kind: 'update', id: todo.id, set, unset, added, removed});
+            }
+        });
+        return changes;
+    };
+    const apply = (todos, record) => {
+        if (!record || record.version !== 2) throw new Error('지원하지 않는 저장 형식입니다.');
+        if (record.kind === 'snapshot') return normalize(record.todos);
+        if (record.kind !== 'patch' || !Array.isArray(record.changes)) throw new Error('변경 기록이 손상되었습니다.');
+        const byId = new Map(todos.map(todo => [todo.id, clone(todo)]));
+        record.changes.forEach(change => {
+            if (!change || typeof change !== 'object') throw new Error('잘못된 변경 기록입니다.');
+            if (change.kind === 'create') {
+                const todo = normalize([change.todo])[0];
+                if (byId.has(todo.id)) throw new Error('중복된 항목 식별자입니다.');
+                byId.set(todo.id, todo);
+                return;
+            }
+            if (typeof change.id !== 'string' || !/^[A-Za-z0-9_-]+$/.test(change.id)) throw new Error('잘못된 항목 식별자입니다.');
+            if (change.kind === 'remove') { byId.delete(change.id); return; }
+            if (change.kind !== 'update' || !change.set || typeof change.set !== 'object' || Array.isArray(change.set) ||
+                ![change.unset, change.added, change.removed].every(Array.isArray) ||
+                !Object.keys(change.set).every(field => fields.includes(field)) ||
+                !change.unset.every(field => fields.includes(field)) ||
+                ![...change.added, ...change.removed].every(TodoModel.isDateKey)) throw new Error('변경 내용이 손상되었습니다.');
+            // A stale update must never resurrect a task deleted in another tab.
+            if (!byId.has(change.id)) return;
+            const todo = {...byId.get(change.id), ...change.set};
+            change.unset.forEach(field => delete todo[field]);
+            todo.completedDates = [...new Set([...(todo.completedDates || []).filter(date => !change.removed.includes(date)), ...change.added])].sort();
+            byId.set(change.id, normalize([todo])[0]);
+        });
+        return normalize([...byId.values()]);
+    };
+
+    // Track who last wrote each field/date. Undo records restore the previous
+    // provenance, so repeated local edits can be undone without claiming a
+    // different tab's later change, even when that tab wrote the same value.
+    const emptyOwner = () => ({present: null, touched: null, fields: {}, dates: {}});
+    const ownerOf = (owners, id) => owners.get(id) || emptyOwner();
+    const effectOf = change => ({
+        kind: change.kind, id: change.kind === 'create' ? change.todo.id : change.id,
+        fields: change.kind === 'update' ? [...new Set([...Object.keys(change.set), ...change.unset])] : [],
+        dates: change.kind === 'update' ? [...new Set([...change.added, ...change.removed])] : []
+    });
+    const ownsEffect = (effect, key, todos, owners) => {
+        const owner = ownerOf(owners, effect.id);
+        const exists = todos.some(todo => todo.id === effect.id);
+        if (effect.kind !== 'update') return owner.present === key && owner.touched === key && exists === (effect.kind === 'create');
+        return exists && effect.fields.every(field => owner.fields[field] === key)
+            && effect.dates.every(date => owner.dates[date] === key);
+    };
+    const validOwner = owner => owner && typeof owner === 'object' && !Array.isArray(owner)
+        && [owner.present, owner.touched].every(value => value === null || typeof value === 'string')
+        && [owner.fields, owner.dates].every(value => value && typeof value === 'object' && !Array.isArray(value)
+            && Object.values(value).every(stamp => stamp === null || typeof stamp === 'string'));
+    const validateUndo = undo => {
+        if (!undo || typeof undo !== 'object' || typeof undo.key !== 'string' || !undo.key.startsWith(PREFIX) || keyClock(undo.key) === null
+            || !Array.isArray(undo.effects) || !undo.effects.length || !undo.owners || typeof undo.owners !== 'object'
+            || !undo.effects.every(effect => effect && ['create', 'remove', 'update'].includes(effect.kind)
+                && typeof effect.id === 'string' && /^[A-Za-z0-9_-]+$/.test(effect.id)
+                && Array.isArray(effect.fields) && effect.fields.every(field => fields.includes(field))
+                && Array.isArray(effect.dates) && effect.dates.every(TodoModel.isDateKey)
+                && validOwner(undo.owners[effect.id]))) throw new Error('되돌리기 기록이 손상되었습니다.');
+    };
+    const applyTracked = (todos, entry, owners) => {
+        const record = entry.value;
+        if (record?.undo !== undefined) {
+            validateUndo(record.undo);
+            if (record.version !== 2 || record.kind !== 'patch' || !Array.isArray(record.changes)
+                || record.changes.length !== record.undo.effects.length) throw new Error('되돌리기 변경 내용이 손상되었습니다.');
+            // A skipped undo must still validate its payload: corrupt bytes must
+            // remain visible as a storage error, never be silently discarded.
+            record.changes.forEach(change => {
+                if (!change || typeof change !== 'object') throw new Error('잘못된 변경 기록입니다.');
+                const id = change.kind === 'create' ? normalize([change.todo])[0].id : change.id;
+                if (typeof id !== 'string' || !/^[A-Za-z0-9_-]+$/.test(id)) throw new Error('잘못된 항목 식별자입니다.');
+                const effect = record.undo.effects.find(item => item.id === id);
+                const inverseKind = {create: 'remove', remove: 'create', update: 'update'};
+                if (!effect || change.kind !== inverseKind[effect.kind]) throw new Error('되돌리기 대상이 손상되었습니다.');
+                if (change.kind === 'update' && (!change.set || typeof change.set !== 'object' || Array.isArray(change.set)
+                    || ![change.unset, change.added, change.removed].every(Array.isArray)
+                    || !Object.keys(change.set).every(field => fields.includes(field))
+                    || !change.unset.every(field => fields.includes(field))
+                    || ![...change.added, ...change.removed].every(TodoModel.isDateKey))) throw new Error('변경 내용이 손상되었습니다.');
+            });
+            if (!record.undo.effects.every(effect => ownsEffect(effect, record.undo.key, todos, owners))) return {todos, applied: false};
+        }
+        const result = apply(todos, record);
+        if (record.kind === 'snapshot') {
+            owners.clear();
+            result.forEach(todo => owners.set(todo.id, {
+                present: entry.key, touched: entry.key,
+                fields: Object.fromEntries(fields.map(field => [field, entry.key])),
+                dates: Object.fromEntries((todo.completedDates || []).map(date => [date, entry.key]))
+            }));
+            return {todos: result, applied: true};
+        }
+        const previousOwners = record.undo ? new Map(record.undo.effects.map(effect => [effect.id, clone(ownerOf(owners, effect.id))])) : null;
+        record.changes.forEach(change => {
+            const effect = effectOf(change), owner = clone(ownerOf(owners, effect.id));
+            owner.touched = entry.key;
+            if (change.kind === 'create') {
+                owner.present = entry.key;
+                owner.fields = Object.fromEntries(fields.map(field => [field, entry.key]));
+                owner.dates = Object.fromEntries((change.todo.completedDates || []).map(date => [date, entry.key]));
+            } else if (change.kind === 'remove') {
+                owner.present = entry.key;
+            } else {
+                effect.fields.forEach(field => { owner.fields[field] = entry.key; });
+                effect.dates.forEach(date => { owner.dates[date] = entry.key; });
+            }
+            owners.set(effect.id, owner);
+        });
+        // Normalization may derive a habit start date; it is part of this edit too.
+        diff(todos, result).filter(change => change.kind === 'update').forEach(change => {
+            const owner = owners.get(change.id);
+            effectOf(change).fields.forEach(field => { owner.fields[field] = entry.key; });
+        });
+        if (record.undo) record.undo.effects.forEach(effect => {
+            const restored = record.undo.owners[effect.id];
+            if (effect.kind !== 'update') { owners.set(effect.id, clone(restored)); return; }
+            const owner = owners.get(effect.id), previous = ownerOf(previousOwners, effect.id);
+            effect.fields.forEach(field => { owner.fields[field] = restored.fields[field] ?? null; });
+            effect.dates.forEach(date => { owner.dates[date] = restored.dates[date] ?? null; });
+            owner.touched = previous.touched === record.undo.key ? restored.touched : previous.touched;
+        });
+        return {todos: result, applied: true};
+    };
+
+    const create = (getStorage, options = {}) => {
+        let todos = [], pending = [], history = [], owners = new Map(), appliedRecords = new Map(), clock = 0n, error = null, rawCache = {};
+        const idFactory = options.makeId || makeId;
+        const getState = () => ({todos: clone(todos), pending: pending.length, error, undoCount: history.length});
+        const publish = () => { if (options.onChange) options.onChange(getState()); };
+        const newRecord = record => {
+            const now = BigInt(Date.now());
+            clock = (clock > now ? clock : now) + 1n;
+            return {key: PREFIX + String(clock).padStart(16, '0') + '_' + idFactory(), value: {version: 2, ...record}};
+        };
+        const read = () => {
+            const nextOwners = new Map(), nextApplied = new Map();
+            const replay = (value, key, record) => {
+                const result = applyTracked(value, {key, value: record}, nextOwners);
+                nextApplied.set(key, result.applied);
+                return result.todos;
+            };
+            const storage = getStorage();
+            const raw = {[LEGACY_KEY]: storage.getItem(LEGACY_KEY)};
+            const keys = [];
+            for (let index = 0; index < storage.length; index++) {
+                const key = storage.key(index);
+                if (key && key.startsWith(PREFIX)) keys.push(key);
+            }
+            keys.sort().forEach(key => { raw[key] = storage.getItem(key); });
+            rawCache = raw;
+            const entries = new Map();
+            keys.forEach(key => {
+                const stamp = keyClock(key);
+                if (stamp !== null && stamp > clock) clock = stamp;
+                try { entries.set(key, JSON.parse(raw[key])); }
+                catch (_) { entries.set(key, null); }
+            });
+            // An explicit restore supersedes earlier corrupt data without deleting its raw bytes.
+            const ordered = [...entries].filter(([key]) => keyClock(key) !== null).sort(([a], [b]) => {
+                const left = keyClock(a), right = keyClock(b);
+                return left < right ? -1 : left > right ? 1 : a < b ? -1 : a > b ? 1 : 0;
+            });
+            const invalidKeys = [...entries.keys()].filter(key => keyClock(key) === null);
+            const ignored = new Set();
+            let start = 0, result;
+            for (let index = ordered.length - 1; index >= 0; index--) {
+                const record = ordered[index][1];
+                if (record?.version === 2 && record.kind === 'snapshot') {
+                    result = replay([], ordered[index][0], record);
+                    if (record.supersedes !== undefined && (!Array.isArray(record.supersedes) || !record.supersedes.every(key => typeof key === 'string' && key.startsWith(PREFIX)))) throw new Error('복구 기록이 손상되었습니다.');
+                    (record.supersedes || []).forEach(key => ignored.add(key));
+                    start = index + 1;
+                    break;
+                }
+            }
+            if (invalidKeys.some(key => !ignored.has(key))) throw new Error('저장 기록의 이름이 손상되었습니다. 백업 파일 복구 또는 새 목록 시작을 이용하세요.');
+            if (!result) result = replay([], LEGACY_KEY, {version: 2, kind: 'snapshot', todos: raw[LEGACY_KEY] === null ? [] : JSON.parse(raw[LEGACY_KEY])});
+            for (let index = start; index < ordered.length; index++) result = replay(result, ordered[index][0], ordered[index][1]);
+            // Keep unsaved work on top of the latest durable state until it can be retried.
+            pending = pending.filter(entry => !entries.has(entry.key));
+            pending.forEach(entry => { result = replay(result, entry.key, entry.value); });
+            owners = nextOwners;
+            appliedRecords = nextApplied;
+            return result;
+        };
+        const refresh = () => {
+            try { todos = read(); error = null; }
+            catch (cause) { error = '저장 데이터를 읽을 수 없습니다. 원본을 보존했습니다. 저장 재시도 또는 파일 복구를 이용하세요. (' + cause.message + ')'; }
+            publish();
+            return getState();
+        };
+        const retry = () => {
+            try {
+                todos = read();
+                const storage = getStorage();
+                while (pending.length) {
+                    const entry = pending[0];
+                    storage.setItem(entry.key, JSON.stringify(entry.value));
+                    pending.shift();
+                }
+                todos = read();
+                error = null;
+            } catch (cause) {
+                error = '저장하지 못했습니다. 이 창의 변경 내용은 유지됩니다. 재시도하거나 백업을 내려받으세요. (' + cause.message + ')';
+            }
+            publish();
+            return !error && pending.length === 0;
+        };
+        const save = nextTodos => {
+            let next;
+            try { next = normalize(nextTodos); }
+            catch (cause) { error = cause.message; publish(); return false; }
+            const changes = diff(todos, next);
+            if (!changes.length) return retry();
+            // Refresh the logical clock, but calculate intent against the view the user edited.
+            try { todos = read(); } catch (_) { /* retry reports the error and preserves pending edits */ }
+            const before = clone(todos);
+            let merged;
+            try { merged = apply(before, {version: 2, kind: 'patch', changes}); }
+            catch (cause) { error = cause.message; publish(); return false; }
+            const effectiveChanges = diff(before, merged);
+            const effects = effectiveChanges.map(effectOf);
+            const previousOwners = Object.fromEntries(effects.map(effect => [effect.id, clone(ownerOf(owners, effect.id))]));
+            const entry = newRecord({kind: 'patch', changes});
+            // Preserve stale intent in the immutable log (including a harmless
+            // update of a deleted item), but only actual edits consume history.
+            if (effects.length) {
+                history.push({entry, effects, owners: previousOwners, inverse: diff(merged, before)});
+                if (history.length > 10) history.shift();
+            }
+            pending.push(entry);
+            todos = applyTracked(before, entry, owners).todos;
+            return retry();
+        };
+        const undo = () => {
+            if (!history.length) return {applied: false, message: '되돌릴 변경이 없습니다.'};
+            try { todos = read(); } catch (_) { /* Offline undo remains available in this window. */ }
+            const action = history.pop();
+            const guard = {key: action.entry.key, effects: action.effects, owners: action.owners};
+            if (!action.effects.every(effect => ownsEffect(effect, action.entry.key, todos, owners))) {
+                publish();
+                return {applied: false, message: '다른 창에서 변경한 내용을 보존하기 위해 이 변경의 되돌리기를 건너뛰었습니다.'};
+            }
+            const entry = newRecord({kind: 'patch', changes: action.inverse, undo: guard});
+            const result = applyTracked(todos, entry, owners);
+            todos = result.todos;
+            const pendingIndex = pending.findIndex(item => item.key === action.entry.key);
+            if (pendingIndex !== -1) {
+                // An edit never written to storage can be cancelled outright.
+                // Replaying the remaining work exposes any concurrent remote edit.
+                pending.splice(pendingIndex, 1);
+            } else pending.push(entry);
+            const saved = retry();
+            const applied = pendingIndex !== -1 || appliedRecords.get(entry.key) !== false;
+            return {applied, message: !applied
+                ? '다른 창에서 변경한 내용을 보존하기 위해 이 변경의 되돌리기를 건너뛰었습니다.'
+                : saved ? '최근 변경을 되돌렸습니다.' : '최근 변경을 되돌렸습니다. 아직 저장되지 않았으니 저장을 재시도해주세요.'};
+        };
+        const restore = value => {
+            try {
+                const restored = normalize(value);
+                // Read keys even when the legacy data is malformed so the snapshot sorts last.
+                try { read(); } catch (_) { /* rawCache and clock were captured before validation */ }
+                const entry = newRecord({kind: 'snapshot', todos: restored, supersedes: Object.keys(rawCache).filter(key => key.startsWith(PREFIX))});
+                getStorage().setItem(entry.key, JSON.stringify(entry.value));
+                pending = [];
+                todos = read();
+                history = [];
+                error = null;
+                publish();
+                return true;
+            } catch (cause) { error = '복구하지 못했습니다. 기존 원본은 보존되어 있습니다. (' + cause.message + ')'; publish(); return false; }
+        };
+        const exportData = () => ({version: 2, exportedAt: new Date().toISOString(), todos: clone(todos)});
+        const exportRecovery = () => {
+            try { read(); } catch (_) { /* export whatever raw data is still readable */ }
+            return {version: 2, exportedAt: new Date().toISOString(), todos: clone(todos), raw: clone(rawCache), pending: clone(pending)};
+        };
+        return {load: refresh, refresh, save, undo, retry, restore, getState, exportData, exportRecovery};
+    };
+    return Object.freeze({create, makeId, LEGACY_KEY, PREFIX});
+})();
+
+
+
+
+    </script>
+
+    <script>
+        // PWA Setup Safely
+        try {
+            const manifestJSON = {
+              "name": "Minimal Todo", "short_name": "Todo", "start_url": ".",
+              "display": "standalone", "background_color": "#F2F2F7", "theme_color": "#F2F2F7",
+              "icons": [{
+                  "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23000'/%3E%3Cpath d='M30 50 L45 65 L70 35' stroke='%23fff' stroke-width='8' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E",
+                  "sizes": "192x192 512x512", "type": "image/svg+xml"
+              }]
+            };
+            const manifestURL = URL.createObjectURL(new Blob([JSON.stringify(manifestJSON)], {type: 'application/json'}));
+            const link = document.createElement('link'); link.rel = 'manifest'; link.href = manifestURL;
+            document.head.appendChild(link);
+        } catch(e) { console.warn("PWA manifest init blocked:", e); }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            let todos = [];
+
+            let currentDate = TodoModel.shiftMonth(new Date(), 0);
+            let selectedDate = new Date(); 
+            let currentFilter = 'all'; 
+            let currentTagFilter = 'all'; 
+            let selectedTagForInput = 'none'; 
+            let selectedHabitId = null; 
+            let pendingMove = null; 
+            let moveDateTarget = null;
+            let editTodoTarget = null;
+
+            const DOM = {
+                calMonthYear: document.getElementById('calendar-month-year'),
+                calGrid: document.getElementById('calendar-grid'),
+                prevMonth: document.getElementById('prev-month'),
+                nextMonth: document.getElementById('next-month'),
+                prevDay: document.getElementById('prev-day'),
+                nextDay: document.getElementById('next-day'),
+                dayPanel: document.getElementById('todo-day-panel'),
+                todoEntry: document.getElementById('todo-entry'),
+                selDateDisp: document.getElementById('selected-date-display'),
+                selDayDisp: document.getElementById('selected-day-display'),
+                todayText: document.getElementById('today-date-text'),
+                todayHeader: document.getElementById('today-header'),
+                todoList: document.getElementById('todo-list'),
+                emptyState: document.getElementById('empty-state'),
+                todoInput: document.getElementById('todo-input'),
+                addBtn: document.getElementById('add-btn'),
+                tracker: document.getElementById('tracker-container'),
+                ringLeft: document.getElementById('progress-ring-path-left'),
+                textLeft: document.getElementById('progress-text-left'),
+                ringRight: document.getElementById('progress-ring-path-right'),
+                textRight: document.getElementById('progress-text-right'),
+                modal: document.getElementById('postpone-modal'),
+                modalContent: document.getElementById('postpone-modal-content'),
+                startModal: document.getElementById('start-date-modal'),
+                startModalContent: document.getElementById('start-date-modal-content'),
+                moveDateModal: document.getElementById('move-date-modal'),
+                moveDateInput: document.getElementById('modal-move-date-input'),
+                editModal: document.getElementById('edit-todo-modal'),
+                editInput: document.getElementById('modal-edit-todo-input'),
+                undoBtn: document.getElementById('undo-btn'),
+                undoStatus: document.getElementById('undo-status')
+            };
+
+            const store = TodoStore.create(() => window.localStorage);
+            const updateStorageStatus = () => {
+                const state = store.getState();
+                document.getElementById('storage-status').hidden = !state.error && !state.pending;
+                document.getElementById('storage-message').textContent = state.error ||
+                    (state.pending ? `아직 저장되지 않은 변경 ${state.pending}건이 있습니다. 창을 닫기 전에 저장 재시도 또는 JSON 백업을 해주세요.` : '');
+                DOM.undoBtn.disabled = state.undoCount === 0;
+                DOM.undoBtn.textContent = `되돌리기 (${state.undoCount}/10)`;
+            };
+            const saveTodos = () => {
+                const saved = store.save(todos);
+                todos = store.getState().todos;
+                DOM.undoStatus.textContent = '';
+                updateStorageStatus();
+                return saved;
+            };
+
+            const formatDate = TodoModel.formatDate;
+            const getDayName = (date) => ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][new Date(date).getDay()];
+            const getMonthName = (date) => ['January','February','March','April','May','June','July','August','September','October','November','December'][new Date(date).getMonth()];
+            
+            const escapeHTML = (str) => {
+                if(!str) return '';
+                return String(str).replace(/[&<>'"]/g, tag => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'}[tag] || tag));
+            };
+
+            const habitColors = ['#AF52DE', '#FF2D55', '#FF9500', '#34C759', '#007AFF', '#5856D6', '#FF3B30'];
+
+            const getTagInfo = (tag) => {
+                switch(tag) {
+                    case 'important': return { icon: '🔥', text: 'Important', color: 'text-ios-red', bg: 'bg-[#FF3B30]/10' };
+                    case 'work': return { icon: '💻', text: 'Work', color: 'text-ios-blue', bg: 'bg-[#007AFF]/10' };
+                    case 'personal': return { icon: '☕', text: 'Personal', color: 'text-ios-orange', bg: 'bg-[#FF9500]/10' };
+                    case 'daily': return { icon: '🔄', text: 'Daily', color: 'text-ios-purple', bg: 'bg-[#AF52DE]/10' };
+                    default: return { icon: '🏷️', text: '태그 없음', color: 'text-ios-muted', bg: 'bg-transparent border border-dashed border-gray-300' };
+                }
+            };
+
+            const updateDateDisplay = () => {
+                DOM.todayText.textContent = `${getMonthName(new Date())} ${new Date().getDate()}`;
+                DOM.selDateDisp.textContent = `${getMonthName(selectedDate)} ${selectedDate.getDate()}`;
+                DOM.selDayDisp.textContent = getDayName(selectedDate);
+            };
+
+            const selectDate = (date, {focusInput = false} = {}) => {
+                selectedDate = new Date(date);
+                currentDate = TodoModel.shiftMonth(selectedDate, 0);
+                updateDateDisplay(); renderCalendar(); renderTodos(); updateProgressRings();
+                if (focusInput) {
+                    DOM.todoInput.focus({preventScroll: true});
+                    const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+                    DOM.todoEntry.scrollIntoView({behavior: reduceMotion ? 'auto' : 'smooth', block: 'center'});
+                }
+            };
+            const moveSelectedDay = delta => {
+                const next = new Date(selectedDate);
+                next.setDate(next.getDate() + delta);
+                if (next.getFullYear() >= 1 && next.getFullYear() <= 9999) selectDate(next);
+            };
+
+            const renderCalendar = () => {
+                DOM.calMonthYear.textContent = `${getMonthName(currentDate)} ${currentDate.getFullYear()}`;
+                DOM.calGrid.innerHTML = '';
+                
+                const year = currentDate.getFullYear();
+                const month = currentDate.getMonth();
+                
+                const firstDay = new Date(year, month, 1).getDay();
+                const daysInMonth = new Date(year, month + 1, 0).getDate();
+                
+                const todayStr = formatDate(new Date());
+                const selectedDateStr = formatDate(selectedDate);
+                
+                for (let i = 0; i < firstDay; i++) {
+                    const emptyDiv = document.createElement('div');
+                    emptyDiv.className = 'calendar-day empty';
+                    DOM.calGrid.appendChild(emptyDiv);
+                }
+                
+                for (let i = 1; i <= daysInMonth; i++) {
+                    const d = new Date(year, month, i);
+                    const dateStr = formatDate(d);
+                    
+                    const dayDiv = document.createElement('div');
+                    dayDiv.className = 'calendar-day';
+                    
+                    let dayHtml = `<span>${i}</span>`;
+                    
+                    if (selectedHabitId) {
+                        const habit = todos.find(t => t.id === selectedHabitId);
+                        if (habit && habit.tag === 'daily' && TodoModel.hasStarted(habit, dateStr) && habit.completedDates.includes(dateStr)) {
+                            let habitColor = '#AF52DE';
+                            const dailyTodos = todos.filter(t => t.tag === 'daily').sort(TodoModel.compareHabits);
+                            const habitIndex = dailyTodos.findIndex(t => t.id === selectedHabitId);
+                            if(habitIndex !== -1) habitColor = habitColors[habitIndex % habitColors.length];
+
+                            dayHtml += `<div class="habit-badge" style="background-color: ${habitColor};"><i class="ph-bold ph-check text-white text-[8px]"></i></div>`;
+                        }
+                    }
+
+                    if (dateStr === todayStr) dayDiv.classList.add('today');
+                    if (dateStr === selectedDateStr) dayDiv.classList.add('selected');
+                    
+                    const dayTodos = todos.filter(t => t.date === dateStr && t.tag !== 'daily');
+                    if (dayTodos.length > 0) {
+                        const total = dayTodos.length;
+                        const completed = dayTodos.filter(t => t.completed).length;
+                        dayHtml += `<div class="day-stat" title="${completed}/${total} 완료">${completed}/${total}</div>`;
+                    }
+                    
+                    dayDiv.innerHTML = dayHtml;
+                    
+                    dayDiv.addEventListener('click', () => {
+                        selectDate(new Date(year, month, i), {focusInput: true});
+                    });
+                    
+                    DOM.calGrid.appendChild(dayDiv);
+                }
+            };
+
+            const updateProgressRings = () => {
+                const progressOn = date => {
+                    const items = todos.filter(todo => todo.tag === 'daily' ? TodoModel.hasStarted(todo, date) : todo.date === date);
+                    const completed = items.filter(todo => todo.tag === 'daily' ? todo.completedDates.includes(date) : todo.completed).length;
+                    return items.length ? Math.round(completed / items.length * 100) : 0;
+                };
+                // Left Ring: Always TODAY
+                const todayStr = formatDate(new Date());
+                const tPct = progressOn(todayStr);
+                DOM.ringLeft.style.strokeDashoffset = 100 - tPct;
+                DOM.textLeft.textContent = `${tPct}%`;
+
+                // Right Ring: Always SELECTED DATE
+                const selDateStr = formatDate(selectedDate);
+                const sPct = progressOn(selDateStr);
+                DOM.ringRight.style.strokeDashoffset = 100 - sPct;
+                DOM.textRight.textContent = `${sPct}%`;
+            };
+
+            let trackerSortable = null;
+
+            const renderTracker = () => {
+                let dailyTodos = todos.filter(t => t.tag === 'daily');
+                if (dailyTodos.length === 0) {
+                    DOM.tracker.innerHTML = `<div class="text-xs text-ios-muted text-center py-6 bg-[#F2F2F7] rounded-2xl">Add a 'Daily' task<br>to see tracking here.</div>`;
+                    return;
+                }
+
+                const dates = [];
+                for (let i = -3; i <= 3; i++) {
+                    const d = new Date(); d.setDate(d.getDate() + i); dates.push(d);
+                }
+
+                let headerHtml = `<div class="flex justify-between px-1 mb-2 ml-[35%] text-[9px] text-ios-muted font-bold uppercase">`;
+                dates.forEach(d => {
+                    const isToday = formatDate(d) === formatDate(new Date());
+                    headerHtml += `<div class="w-6 flex items-center justify-center rounded ${isToday ? 'bg-ios-blue/10 text-ios-blue py-0.5' : ''}">${['S','M','T','W','T','F','S'][d.getDay()]}</div>`;
+                });
+                headerHtml += `</div>`;
+                
+                // 순서(habitOrder)를 기반으로 정렬
+                dailyTodos.sort(TodoModel.compareHabits);
+
+                let html = headerHtml;
+                html += `<div id="tracker-list-content" class="flex flex-col gap-1">`;
+                
+                dailyTodos.forEach((todo, index) => {
+                    const color = habitColors[index % habitColors.length];
+                    const isSelected = selectedHabitId === todo.id;
+
+                    let dotsHtml = dates.map(d => {
+                        const dateStr = formatDate(d);
+                        const isStarted = TodoModel.hasStarted(todo, dateStr);
+                        const isCompleted = todo.completedDates && todo.completedDates.includes(dateStr);
+                        const isToday = dateStr === formatDate(new Date());
+                        
+                        let dotContent = '';
+                        if (!isStarted) {
+                            dotContent = `<div class="w-2.5 h-2.5 rounded-full bg-transparent border border-dashed border-[#E5E5EA]"></div>`;
+                        } else if (isCompleted) {
+                            dotContent = `<div class="w-2.5 h-2.5 rounded-full" style="background-color: ${color};"></div>`;
+                        } else {
+                            dotContent = `<div class="w-2.5 h-2.5 rounded-full bg-[#E5E5EA]"></div>`;
+                        }
+
+                        return `<div class="w-6 h-6 flex items-center justify-center rounded-md ${isToday ? 'bg-gray-50' : ''}">${dotContent}</div>`;
+                    }).join('');
+
+                    const priority = index === 0
+                        ? {label: '높음', color: '#FF3B30', path: 'm5 11 7-6 7 6 M5 19l7-6 7 6'}
+                        : index === 1
+                            ? {label: '보통', color: '#FF9500', path: 'M5 9h14 M5 15h14'}
+                            : {label: '낮음', color: '#8E8E93', path: 'm5 7 7 6 7-6 M5 13l7 6 7-6'};
+                    const priorityIcon = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="${priority.color}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${priority.path}" /></svg>`;
+
+                    html += `
+                        <div class="tracker-row flex justify-between items-center py-2 px-2 rounded-xl cursor-pointer transition-all ${isSelected ? 'shadow-sm' : 'hover:bg-gray-50'}" style="${isSelected ? `background-color: ${color}15; border: 1px solid ${color}30;` : 'border: 1px solid transparent;'}" data-id="${todo.id}">
+                            <div class="flex flex-1 items-center overflow-hidden pr-2">
+                                <div class="tracker-drag-handle text-gray-300 hover:text-black shrink-0 cursor-grab active:cursor-grabbing p-1 -ml-1" title="드래그하여 중요도 순서 변경">
+                                    <i class="ph-bold ph-dots-six-vertical text-sm pointer-events-none"></i>
+                                </div>
+                                <span class="habit-priority mr-1.5 shrink-0 flex items-center justify-center w-4 h-4" role="img" aria-label="중요도 ${priority.label}" title="중요도 ${priority.label} · 위로 옮길수록 중요">${priorityIcon}</span>
+                                <div class="truncate text-[11px] font-semibold" style="color: ${isSelected ? color : '#8E8E93'}" title="${escapeHTML(todo.text)}">${escapeHTML(todo.text)}</div>
+                            </div>
+                            <div class="flex justify-between shrink-0 px-1 pointer-events-none">${dotsHtml}</div>
+                        </div>
+                    `;
+                });
+                html += `</div>`;
+                DOM.tracker.innerHTML = html;
+                
+                DOM.tracker.querySelectorAll('.tracker-row').forEach(row => {
+                    row.addEventListener('click', (e) => {
+                        if (e.target.closest('.tracker-drag-handle')) return; 
+                        const id = e.currentTarget.dataset.id;
+                        selectedHabitId = (selectedHabitId === id) ? null : id;
+                        renderTracker(); renderCalendar(); 
+                    });
+                });
+
+                // 트래커 목록에 드래그 앤 드롭 기능(Sortable) 초기화
+                const trackerListEl = DOM.tracker.querySelector('#tracker-list-content');
+                if (trackerListEl) {
+                    try {
+                        if (trackerSortable) trackerSortable.destroy();
+                        trackerSortable = new Sortable(trackerListEl, {
+                            handle: '.tracker-drag-handle',
+                            animation: 150,
+                            ghostClass: 'sortable-ghost',
+                            onEnd: function () {
+                                const newOrderIds = Array.from(trackerListEl.querySelectorAll('.tracker-row')).map(el => el.dataset.id);
+                                todos = todos.map(todo => {
+                                    if (todo.tag === 'daily') {
+                                        const orderIndex = newOrderIds.indexOf(todo.id);
+                                        if (orderIndex !== -1) return { ...todo, habitOrder: orderIndex };
+                                    }
+                                    return todo;
+                                });
+                                saveTodos();
+                                renderTracker(); // 변경된 순위 즉시 반영
+                                renderTodos(); // 우측 리스트에도 정렬 반영
+                                renderCalendar();
+                            }
+                        });
+                    } catch(e) { console.warn("Tracker sortable init error"); }
+                }
+            };
+
+            const createTodoElement = (todo, isCompleted) => {
+                const li = document.createElement('li');
+                li.className = 'todo-item group bg-white border border-ios-border rounded-2xl p-4 flex flex-col gap-2 shadow-sm transition-all relative overflow-hidden';
+                li.dataset.id = todo.id;
+                const badgeInfo = getTagInfo(todo.tag);
+                
+                const postponeBadge = (todo.tag !== 'daily' && todo.postponedCount > 0) ? `<span class="inline-flex items-center ml-2 px-1.5 py-0.5 rounded text-[9px] font-bold bg-orange-100 text-ios-orange whitespace-nowrap">미룸 ${todo.postponedCount}회</span>` : '';
+
+                let statsHtml = '';
+                let moveButtonHtml = '';
+                
+                if (todo.tag === 'daily') {
+                    const stats = TodoModel.habitStats(todo, formatDate(new Date()));
+                    const statsText = stats.started ? `누적 ${stats.completedCount}일 / ${stats.totalDays}일 (달성률 ${stats.rate}%)` : '시작 예정';
+                    
+                    statsHtml = `<div class="text-[10px] text-ios-muted font-medium flex items-center gap-1 truncate w-full lg:w-auto" title="시작일부터 오늘까지 완료한 날짜의 비율 (오늘 포함)"><i class="ph-fill ph-flag-checkered text-[#AF52DE] shrink-0"></i> <span class="truncate">시작: ${todo.date.slice(5)} • ${statsText}</span></div>`;
+                    
+                    moveButtonHtml = ``; // 길게 누르기로 대체되어 달력 버튼 삭제
+                } else {
+                    moveButtonHtml = `
+                        <div class="relative flex items-center">
+                            <button class="move-date-btn text-ios-muted hover:text-ios-blue opacity-100 md:opacity-0 group-hover:opacity-100 transition-all focus:outline-none p-2 rounded-xl hover:bg-gray-100" title="다른 날짜로 미루기" aria-label="할 일 날짜 이동">
+                                <i class="ph-bold ph-calendar-blank text-xl pointer-events-none"></i>
+                            </button>
+                        </div>
+                    `;
+                }
+
+                li.innerHTML = `
+                    <div class="flex items-center gap-2 w-full">
+                        <div class="drag-handle text-ios-muted hover:text-black shrink-0 transition-colors py-2 pl-1"><i class="ph-bold ph-dots-six-vertical text-xl pointer-events-none"></i></div>
+                        <input type="checkbox" class="ios-checkbox shrink-0 checkbox-el" ${isCompleted ? 'checked' : ''}>
+                        <div class="flex flex-col flex-1 overflow-hidden min-w-0 py-0.5">
+                            <div class="flex items-center w-full min-w-0 gap-1.5">
+                                <span class="text-[15px] font-semibold truncate ${isCompleted ? 'completed-text' : ''}" title="${escapeHTML(todo.text)}">${escapeHTML(todo.text)}</span>
+                                ${postponeBadge}
+                            </div>
+                            <div class="mt-1 flex flex-col lg:flex-row lg:items-center relative w-full gap-1.5">
+                                <div class="relative inline-flex shrink-0 w-max">
+                                    <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider ${badgeInfo.bg} ${badgeInfo.color}">
+                                        <span>${badgeInfo.text}</span><i class="ph-bold ph-caret-down text-[8px] ml-0.5"></i>
+                                    </span>
+                                    <select class="tag-select overlay-input text-[10px]" title="태그 변경">
+                                        <option value="none" ${todo.tag === 'none' ? 'selected' : ''}>🏷️ 태그 추가 (None)</option>
+                                        <option value="important" ${todo.tag === 'important' ? 'selected' : ''}>🔥 중요 (Important)</option>
+                                        <option value="work" ${todo.tag === 'work' ? 'selected' : ''}>💻 업무 (Work)</option>
+                                        <option value="personal" ${todo.tag === 'personal' ? 'selected' : ''}>☕ 개인 (Personal)</option>
+                                        <option value="daily" ${todo.tag === 'daily' ? 'selected' : ''}>🔄 매일 (Daily)</option>
+                                    </select>
+                                </div>
+                                ${statsHtml}
+                            </div>
+                        </div>
+                        <div class="flex items-center shrink-0 ml-1 gap-1">
+                            ${moveButtonHtml}
+                            <button class="edit-btn text-ios-muted hover:text-ios-blue opacity-100 md:opacity-0 group-hover:opacity-100 transition-all p-2 rounded-xl hover:bg-gray-100" type="button" title="할 일 내용 수정" aria-label="할 일 내용 수정">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 5 4 4 M4 20l4-1L20 7a2.8 2.8 0 0 0-4-4L4 15z" /></svg>
+                            </button>
+                            <button class="delete-btn text-ios-muted hover:text-ios-red opacity-100 md:opacity-0 group-hover:opacity-100 transition-all focus:outline-none p-2 rounded-xl hover:bg-red-50" title="삭제">
+                                <i class="ph-bold ph-trash text-xl pointer-events-none"></i>
+                            </button>
+                        </div>
+                    </div>
+                `;
+
+                // Add Event Listeners
+                li.querySelector('.checkbox-el').addEventListener('change', () => toggleTodo(todo.id));
+                li.querySelector('.delete-btn').addEventListener('click', () => deleteTodo(todo.id));
+                li.querySelector('.edit-btn').addEventListener('click', event => {
+                    editTodoTarget = {id: todo.id, button: event.currentTarget};
+                    DOM.editInput.value = todo.text;
+                    document.getElementById('edit-todo-error').textContent = '';
+                    DOM.editModal.hidden = false;
+                    DOM.editInput.focus({preventScroll: true});
+                    DOM.editInput.select();
+                });
+                li.querySelector('.tag-select').addEventListener('change', (e) => changeTag(todo.id, e.target.value));
+                
+                if (todo.tag === 'daily') {
+                    let pressTimer;
+                    const startPress = (e) => {
+                        if (e.target.tagName.toLowerCase() === 'input' || e.target.tagName.toLowerCase() === 'button' || e.target.closest('button') || e.target.closest('.drag-handle') || e.target.tagName.toLowerCase() === 'select') return;
+                        li.classList.add('pressing');
+                        pressTimer = setTimeout(() => { li.classList.remove('pressing'); openStartDateModal(todo.id, todo.date); }, 500);
+                    };
+                    const cancelPress = () => { li.classList.remove('pressing'); clearTimeout(pressTimer); };
+                    li.addEventListener('mousedown', startPress);
+                    li.addEventListener('touchstart', startPress, {passive: true});
+                    li.addEventListener('mouseup', cancelPress);
+                    li.addEventListener('mouseleave', cancelPress);
+                    li.addEventListener('touchend', cancelPress);
+                    li.addEventListener('touchcancel', cancelPress);
+                    li.addEventListener('touchmove', cancelPress, {passive: true});
+                } else {
+                    const moveBtn = li.querySelector('.move-date-btn');
+                    moveBtn.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        moveDateTarget = {id: todo.id, button: moveBtn};
+                        DOM.moveDateInput.value = todo.date;
+                        document.getElementById('move-date-error').textContent = '';
+                        DOM.moveDateModal.hidden = false;
+                        DOM.moveDateInput.focus({preventScroll: true});
+                    });
+                }
+
+                return li;
+            };
+
+            const renderTodos = () => {
+                DOM.todoList.innerHTML = '';
+                const selDateStr = formatDate(selectedDate);
+                
+                let filtered = todos.filter(t => (t.tag === 'daily') ? TodoModel.hasStarted(t, selDateStr) : t.date === selDateStr);
+
+                if (currentFilter === 'active') filtered = filtered.filter(t => t.tag === 'daily' ? !(t.completedDates && t.completedDates.includes(selDateStr)) : !t.completed);
+                else if (currentFilter === 'completed') filtered = filtered.filter(t => t.tag === 'daily' ? (t.completedDates && t.completedDates.includes(selDateStr)) : t.completed);
+
+                if (currentTagFilter !== 'all') filtered = filtered.filter(t => t.tag === currentTagFilter);
+
+                // A single group order makes the comparator transitive for mixed lists.
+                filtered.sort(TodoModel.compareTodos);
+
+                if (filtered.length === 0) {
+                    DOM.emptyState.classList.remove('hidden'); DOM.todoList.classList.add('hidden');
+                } else {
+                    DOM.emptyState.classList.add('hidden'); DOM.todoList.classList.remove('hidden');
+                    filtered.forEach(todo => {
+                        const isCompleted = todo.tag === 'daily' ? (todo.completedDates && todo.completedDates.includes(selDateStr)) : todo.completed;
+                        DOM.todoList.appendChild(createTodoElement(todo, isCompleted));
+                    });
+                }
+                updateProgressRings();
+            };
+
+            const changeTag = (id, newTag) => {
+                const selDateStr = formatDate(selectedDate);
+                todos = todos.map(todo => todo.id === id ? TodoModel.changeTag(todo, newTag, selDateStr) : todo);
+                if (selectedHabitId === id && newTag !== 'daily') selectedHabitId = null;
+                saveTodos(); renderTodos(); renderTracker(); renderCalendar();
+            };
+
+            const closeEditModal = (restoreFocus = true) => {
+                DOM.editModal.hidden = true;
+                if (restoreFocus && editTodoTarget) editTodoTarget.button.focus({preventScroll: true});
+                editTodoTarget = null;
+            };
+            const saveEditedTodo = () => {
+                if (!editTodoTarget) return;
+                const text = DOM.editInput.value.trim();
+                if (!text) {
+                    document.getElementById('edit-todo-error').textContent = '할 일 내용을 입력해주세요.';
+                    DOM.editInput.focus({preventScroll: true});
+                    return;
+                }
+                const id = editTodoTarget.id;
+                const todo = todos.find(todo => todo.id === id);
+                if (!todo) {
+                    document.getElementById('edit-todo-error').textContent = '이미 삭제된 항목입니다. 창을 닫아 목록을 확인해주세요.';
+                    return;
+                }
+                if (todo.text === text) { closeEditModal(); return; }
+                todos = todos.map(todo => todo.id === id ? {...todo, text} : todo);
+                saveTodos(); closeEditModal(false); renderAll();
+                DOM.todoList.querySelector(`[data-id="${id}"] .edit-btn`)?.focus({preventScroll: true});
+            };
+            document.getElementById('btn-edit-todo-save').addEventListener('click', saveEditedTodo);
+            document.getElementById('btn-edit-todo-cancel').addEventListener('click', () => closeEditModal());
+            DOM.editInput.addEventListener('keydown', event => {
+                if (event.key === 'Enter' && !event.isComposing && event.keyCode !== 229) {
+                    event.preventDefault(); saveEditedTodo();
+                }
+            });
+            DOM.editModal.addEventListener('click', event => {
+                if (event.target === DOM.editModal) closeEditModal();
+            });
+            DOM.editModal.addEventListener('keydown', event => {
+                if (event.key === 'Escape' && !event.isComposing) { event.preventDefault(); closeEditModal(); }
+                if (event.key !== 'Tab') return;
+                const first = DOM.editInput;
+                const last = document.getElementById('btn-edit-todo-save');
+                if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+                else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+            });
+
+            const triggerMoveTodo = (id, newDate) => {
+                const todo = todos.find(todo => todo.id === id && todo.tag !== 'daily');
+                if (!todo || !TodoModel.isDateKey(newDate) || newDate === todo.date) return;
+                pendingMove = { id, newDate };
+                if (newDate < formatDate(new Date())) { executeMove(false); return; }
+                DOM.modal.classList.remove('opacity-0', 'pointer-events-none');
+                DOM.modalContent.classList.replace('scale-95', 'scale-100');
+                document.getElementById('btn-postpone-yes').focus({preventScroll: true});
+            };
+
+            const closeMoveDateModal = (restoreFocus = true) => {
+                DOM.moveDateModal.hidden = true;
+                if (restoreFocus && moveDateTarget) moveDateTarget.button.focus({preventScroll: true});
+                moveDateTarget = null;
+            };
+            const continueMoveDate = () => {
+                if (!moveDateTarget) return;
+                const newDate = DOM.moveDateInput.value;
+                if (!TodoModel.isDateKey(newDate)) {
+                    document.getElementById('move-date-error').textContent = '올바른 날짜를 선택해주세요.';
+                    DOM.moveDateInput.focus({preventScroll: true});
+                    return;
+                }
+                const todo = todos.find(todo => todo.id === moveDateTarget.id && todo.tag !== 'daily');
+                if (!todo || todo.date === newDate) { closeMoveDateModal(); return; }
+                closeMoveDateModal(false);
+                triggerMoveTodo(todo.id, newDate);
+            };
+            document.getElementById('btn-move-date-cancel').addEventListener('click', () => closeMoveDateModal());
+            document.getElementById('btn-move-date-continue').addEventListener('click', continueMoveDate);
+            DOM.moveDateModal.addEventListener('click', event => {
+                if (event.target === DOM.moveDateModal) closeMoveDateModal();
+            });
+            DOM.moveDateInput.addEventListener('keydown', event => {
+                if (event.key === 'Enter') { event.preventDefault(); continueMoveDate(); }
+            });
+            DOM.moveDateModal.addEventListener('keydown', event => {
+                if (event.key === 'Escape') { event.preventDefault(); closeMoveDateModal(); }
+                if (event.key !== 'Tab') return;
+                const first = DOM.moveDateInput;
+                const last = document.getElementById('btn-move-date-continue');
+                if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+                else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+            });
+
+            const executeMove = (incrementCount) => {
+                if (!pendingMove) return;
+                const { id, newDate } = pendingMove;
+                todos = todos.map(t => t.id === id && t.tag !== 'daily' ? { ...t, date: newDate, postponedCount: incrementCount ? (t.postponedCount || 0) + 1 : (t.postponedCount || 0) } : t);
+                saveTodos(); renderCalendar(); renderTracker();
+                closeModal();
+            };
+
+            const closeModal = () => {
+                DOM.modal.classList.add('opacity-0', 'pointer-events-none');
+                DOM.modalContent.classList.replace('scale-100', 'scale-95');
+                renderTodos(); pendingMove = null;
+            };
+
+            document.getElementById('btn-postpone-yes').addEventListener('click', () => executeMove(true));
+            document.getElementById('btn-postpone-no').addEventListener('click', () => executeMove(false));
+            document.getElementById('btn-postpone-cancel').addEventListener('click', closeModal);
+
+            const openStartDateModal = (id, currentStartDate) => {
+                if (navigator.vibrate) navigator.vibrate(50);
+                document.getElementById('modal-start-target-id').value = id;
+                document.getElementById('modal-start-date-input').value = currentStartDate;
+                DOM.startModal.classList.remove('opacity-0', 'pointer-events-none');
+                DOM.startModalContent.classList.replace('scale-95', 'scale-100');
+            };
+
+            const closeStartDateModal = () => {
+                DOM.startModal.classList.add('opacity-0', 'pointer-events-none');
+                DOM.startModalContent.classList.replace('scale-100', 'scale-95');
+            };
+
+            document.getElementById('btn-start-date-cancel').addEventListener('click', closeStartDateModal);
+            document.getElementById('btn-start-date-save').addEventListener('click', () => {
+                const id = document.getElementById('modal-start-target-id').value;
+                const newDate = document.getElementById('modal-start-date-input').value;
+                if(TodoModel.isDateKey(newDate)) {
+                    todos = todos.map(t => t.id === id && t.tag === 'daily' ? { ...t, date: newDate, habitStartDate: newDate } : t);
+                    saveTodos(); renderTodos(); renderTracker(); renderCalendar();
+                }
+                closeStartDateModal();
+            });
+
+            const addTodo = () => {
+                const text = DOM.todoInput.value.trim();
+                if (!text) return;
+                const nextOrder = todos.reduce((max, todo) => Math.max(max, todo.orderIndex || 0), -1) + 1;
+                const newTodo = { id: TodoStore.makeId(), text, date: formatDate(selectedDate), completed: false, tag: selectedTagForInput, postponedCount: 0, orderIndex: nextOrder };
+                if (newTodo.tag === 'daily') newTodo.completedDates = [];
+                todos.push(newTodo);
+                saveTodos(); DOM.todoInput.value = '';
+                
+                // Bug Fix: 입력 완료 후 즉시 태그 버튼 상태 초기화(없음)
+                const noneTagBtn = document.querySelector('#input-tags .tag-btn[data-tag="none"]');
+                if (noneTagBtn) noneTagBtn.click();
+                
+                renderTodos(); renderCalendar(); if(newTodo.tag === 'daily') renderTracker();
+            };
+
+            const toggleTodo = (id) => {
+                const selDateStr = formatDate(selectedDate);
+                todos = todos.map(todo => {
+                    if (todo.id === id) {
+                        if (todo.tag === 'daily') {
+                            let dates = todo.completedDates || [];
+                            return { ...todo, completedDates: dates.includes(selDateStr) ? dates.filter(d => d !== selDateStr) : [...dates, selDateStr] };
+                        } else {
+                            return { ...todo, completed: !todo.completed };
+                        }
+                    }
+                    return todo;
+                });
+                saveTodos(); renderTodos(); renderCalendar(); renderTracker();
+            };
+
+            const deleteTodo = (id) => {
+                const todo = todos.find(todo => todo.id === id);
+                if (!todo) return;
+                const detail = todo.tag === 'daily' ? '\n이 습관의 모든 완료 이력도 함께 삭제됩니다.' : '';
+                if (!window.confirm(`“${todo.text}”을(를) 정말 삭제할까요?${detail}\n삭제 후 되돌리기로 복원할 수 있습니다.`)) return;
+                todos = todos.filter(t => t.id !== id);
+                if(selectedHabitId === id) selectedHabitId = null;
+                saveTodos(); renderTodos(); renderCalendar(); renderTracker();
+            };
+
+            DOM.todayHeader.addEventListener('click', () => { selectDate(new Date()); renderTracker(); });
+            DOM.prevDay.addEventListener('click', () => moveSelectedDay(-1));
+            DOM.nextDay.addEventListener('click', () => moveSelectedDay(1));
+
+            // Only intentional horizontal, single-finger gestures change the date.
+            // Inputs, buttons and drag handles retain their own native interactions.
+            let daySwipe = null;
+            DOM.dayPanel.addEventListener('touchstart', event => {
+                daySwipe = null;
+                if (event.touches.length !== 1 || ['input', 'textarea', 'select', 'button', 'a', '.drag-handle', '.tracker-drag-handle']
+                    .some(selector => event.target.closest(selector))) return;
+                const touch = event.touches[0];
+                daySwipe = {id: touch.identifier, x: touch.clientX, y: touch.clientY, axis: null};
+            }, {passive: true});
+            DOM.dayPanel.addEventListener('touchmove', event => {
+                if (!daySwipe) return;
+                if (event.touches.length !== 1) { daySwipe = null; return; }
+                const touch = Array.from(event.touches).find(touch => touch.identifier === daySwipe.id);
+                if (!touch) { daySwipe = null; return; }
+                const dx = Math.abs(touch.clientX - daySwipe.x);
+                const dy = Math.abs(touch.clientY - daySwipe.y);
+                if (!daySwipe.axis && Math.max(dx, dy) >= 10) {
+                    if (dy >= dx) { daySwipe = null; return; }
+                    if (dx > dy * 1.5) daySwipe.axis = 'horizontal';
+                }
+                if (daySwipe?.axis === 'horizontal' && event.cancelable !== false) event.preventDefault();
+            }, {passive: false});
+            DOM.dayPanel.addEventListener('touchend', event => {
+                const gesture = daySwipe;
+                daySwipe = null;
+                if (!gesture || event.touches.length || !DOM.moveDateModal.hidden || !DOM.editModal.hidden ||
+                    !DOM.modal.classList.contains('pointer-events-none') || !DOM.startModal.classList.contains('pointer-events-none')) return;
+                const touch = Array.from(event.changedTouches).find(touch => touch.identifier === gesture.id);
+                if (!touch) return;
+                const dx = touch.clientX - gesture.x;
+                const dy = touch.clientY - gesture.y;
+                if (Math.abs(dx) >= 60 && Math.abs(dx) > Math.abs(dy) * 1.5) moveSelectedDay(dx < 0 ? 1 : -1);
+            }, {passive: true});
+            DOM.dayPanel.addEventListener('touchcancel', () => { daySwipe = null; }, {passive: true});
+            DOM.addBtn.addEventListener('click', addTodo);
+            DOM.todoInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') addTodo(); });
+
+            document.querySelectorAll('#input-tags .tag-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    document.querySelectorAll('#input-tags .tag-btn').forEach(b => {
+                        b.classList.remove('active', 'active-daily', '!bg-white', '!text-black', 'shadow-sm', 'text-ios-red', 'text-ios-blue', 'text-ios-orange', 'text-ios-purple', 'text-ios-muted', '!bg-ios-purple', '!text-white');
+                        if(b.dataset.tag === 'important') b.classList.add('text-ios-red');
+                        if(b.dataset.tag === 'work') b.classList.add('text-ios-blue');
+                        if(b.dataset.tag === 'personal') b.classList.add('text-ios-orange');
+                        if(b.dataset.tag === 'daily') b.classList.add('text-ios-purple');
+                        if(b.dataset.tag === 'none') b.classList.add('text-ios-muted');
+                    });
+                    const target = e.currentTarget;
+                    target.className = `tag-btn active !bg-white !text-black shadow-sm !px-2.5 !py-1 !text-[10px]`;
+                    selectedTagForInput = target.dataset.tag;
+                });
+            });
+
+            DOM.prevMonth.addEventListener('click', () => { currentDate = TodoModel.shiftMonth(currentDate, -1); renderCalendar(); });
+            DOM.nextMonth.addEventListener('click', () => { currentDate = TodoModel.shiftMonth(currentDate, 1); renderCalendar(); });
+
+            document.querySelectorAll('.segment-btn').forEach(tab => {
+                tab.addEventListener('click', (e) => {
+                    document.querySelectorAll('.segment-btn').forEach(t => t.classList.remove('active'));
+                    e.target.classList.add('active'); currentFilter = e.target.dataset.filter; renderTodos();
+                });
+            });
+
+            document.querySelectorAll('.filter-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    document.querySelectorAll('.filter-btn').forEach(t => { t.classList.remove('bg-ios-text', 'text-white'); t.classList.add('text-ios-muted'); });
+                    const target = e.currentTarget;
+                    target.classList.add('bg-ios-text', 'text-white'); target.classList.remove('text-ios-muted');
+                    currentTagFilter = target.dataset.tag; renderTodos();
+                });
+            });
+
+            try {
+                new Sortable(DOM.todoList, {
+                    handle: '.drag-handle', animation: 200, ghostClass: 'sortable-ghost',
+                    onEnd: function () {
+                        const newOrderIds = Array.from(DOM.todoList.querySelectorAll('.todo-item')).map(el => el.dataset.id);
+                        const visible = new Set(newOrderIds);
+                        const byId = new Map(todos.map(todo => [todo.id, todo]));
+                        const group = todo => todo.tag === 'important' ? 0 : todo.tag === 'daily' ? 1 : 2;
+                        const updates = new Map();
+                        for (const groupIndex of [0, 1, 2]) {
+                            const members = todos.filter(todo => group(todo) === groupIndex).sort(TodoModel.compareTodos);
+                            const moved = newOrderIds.map(id => byId.get(id)).filter(todo => group(todo) === groupIndex);
+                            let nextIndex = 0;
+                            // Replace only visible slots; hidden dates/filters keep their positions.
+                            members.map(todo => visible.has(todo.id) ? moved[nextIndex++] : todo).forEach((todo, index) => {
+                                updates.set(todo.id, groupIndex === 1 ? {...todo, habitOrder: index} : {...todo, orderIndex: index});
+                            });
+                        }
+                        todos = todos.map(todo => updates.get(todo.id) || todo);
+                        saveTodos(); renderTodos(); renderTracker(); renderCalendar();
+                    },
+                });
+            } catch(e) { console.warn("Sortable init failed"); }
+
+            const renderAll = () => {
+                if (!todos.some(todo => todo.id === selectedHabitId && todo.tag === 'daily')) selectedHabitId = null;
+                updateDateDisplay(); renderCalendar(); renderTodos(); renderTracker(); updateProgressRings();
+            };
+            const syncFromStore = () => {
+                todos = store.refresh().todos;
+                updateStorageStatus(); renderAll();
+            };
+            DOM.undoBtn.addEventListener('click', () => {
+                const result = store.undo();
+                todos = store.getState().todos;
+                DOM.undoStatus.textContent = result.message;
+                updateStorageStatus(); renderAll();
+            });
+            const downloadJSON = (value, name) => {
+                const url = URL.createObjectURL(new Blob([JSON.stringify(value, null, 2)], {type: 'application/json'}));
+                const anchor = document.createElement('a');
+                anchor.href = url; anchor.download = name;
+                document.body.appendChild(anchor); anchor.click(); anchor.remove();
+                setTimeout(() => URL.revokeObjectURL(url), 1000);
+            };
+            document.getElementById('storage-retry').addEventListener('click', () => {
+                store.retry(); todos = store.getState().todos;
+                updateStorageStatus(); renderAll();
+            });
+            document.getElementById('backup-export').addEventListener('click', () => {
+                downloadJSON(store.exportData(), `daily-todo-${formatDate(new Date())}.json`);
+            });
+            document.getElementById('storage-original').addEventListener('click', () => {
+                downloadJSON(store.exportRecovery(), `daily-todo-recovery-${formatDate(new Date())}.json`);
+            });
+            document.getElementById('storage-reset').addEventListener('click', () => {
+                if (!window.confirm('원본과 미저장 내용을 내려받고 새 목록을 시작할까요? 브라우저에 남아 있는 원본 기록도 보존됩니다.')) return;
+                downloadJSON(store.exportRecovery(), `daily-todo-recovery-${formatDate(new Date())}.json`);
+                store.restore([]); todos = store.getState().todos;
+                DOM.undoStatus.textContent = '';
+                updateStorageStatus(); renderAll();
+            });
+            const backupFile = document.getElementById('backup-file');
+            document.getElementById('backup-import').addEventListener('click', () => backupFile.click());
+            backupFile.addEventListener('change', async () => {
+                const file = backupFile.files[0];
+                if (!file) return;
+                try {
+                    const data = JSON.parse(await file.text());
+                    const restored = TodoModel.normalizeTodos(Array.isArray(data) ? data : data.todos).todos;
+                    if (!window.confirm(`백업의 ${restored.length}개 항목으로 현재 목록을 바꿀까요? 기존 목록의 백업도 먼저 내려받습니다.`)) return;
+                    downloadJSON(store.exportRecovery(), `daily-todo-before-restore-${formatDate(new Date())}.json`);
+                    store.restore(restored); todos = store.getState().todos;
+                    DOM.undoStatus.textContent = '';
+                    updateStorageStatus(); renderAll();
+                } catch (error) {
+                    document.getElementById('storage-status').hidden = false;
+                    document.getElementById('storage-message').textContent = '백업 파일을 읽을 수 없습니다. 현재 목록은 유지됩니다. (' + error.message + ')';
+                } finally { backupFile.value = ''; }
+            });
+            window.addEventListener('storage', event => {
+                if (event.key === null || event.key === TodoStore.LEGACY_KEY || event.key.startsWith(TodoStore.PREFIX)) syncFromStore();
+            });
+            window.addEventListener('focus', syncFromStore);
+            window.addEventListener('beforeunload', event => {
+                if (store.getState().pending) { event.preventDefault(); event.returnValue = ''; }
+            });
+            todos = store.load().todos;
+            updateStorageStatus(); renderAll();
+        });
+    </script>
+</body>
+</html>
