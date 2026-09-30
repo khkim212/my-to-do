@@ -1,0 +1,854 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Minimal Todo</title>
+    
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Minimal Todo">
+    <meta name="theme-color" content="#F2F2F7">
+    <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23000'/%3E%3Cpath d='M30 50 L45 65 L70 35' stroke='%23fff' stroke-width='8' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        ios: {
+                            bg: '#F2F2F7', card: '#FFFFFF', text: '#000000',
+                            muted: '#8E8E93', border: '#E5E5EA', blue: '#007AFF',
+                            red: '#FF3B30', orange: '#FF9500', purple: '#AF52DE', green: '#34C759'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+        body {
+            background-color: theme('colors.ios.bg'); color: theme('colors.ios.text');
+            -webkit-font-smoothing: antialiased; -webkit-user-select: none; user-select: none;
+        }
+        input[type="text"], input[type="date"] { -webkit-user-select: auto; user-select: auto; }
+        ::-webkit-scrollbar { width: 0px; background: transparent; }
+
+        .ios-checkbox {
+            appearance: none; width: 26px; height: 26px; border: 2px solid theme('colors.ios.border');
+            border-radius: 50%; outline: none; cursor: pointer; position: relative;
+            transition: all 0.2s ease-in-out; background-color: theme('colors.ios.card');
+        }
+        .ios-checkbox:checked { background-color: theme('colors.ios.text'); border-color: theme('colors.ios.text'); }
+        .ios-checkbox:checked::after {
+            content: ''; position: absolute; top: 45%; left: 50%; transform: translate(-50%, -50%) rotate(45deg);
+            width: 6px; height: 12px; border: solid white; border-width: 0 2px 2px 0;
+        }
+
+        .completed-text { color: theme('colors.ios.muted'); text-decoration: line-through; transition: all 0.3s ease; }
+        
+        .calendar-day {
+            aspect-ratio: 1; display: flex; flex-direction: column; align-items: center;
+            justify-content: center; border-radius: 50%; cursor: pointer; transition: all 0.2s;
+            position: relative; font-size: 15px;
+        }
+        .calendar-day:hover:not(.empty) { background-color: #E5E5EA; }
+        .calendar-day.empty { cursor: default; }
+        .calendar-day.selected { background-color: #000000 !important; color: #FFFFFF !important; }
+        .calendar-day.selected span { color: #FFFFFF !important; }
+        .calendar-day.selected .day-stat { color: rgba(255,255,255,0.8) !important; }
+        .calendar-day.today:not(.selected) { color: #007AFF; font-weight: 700; }
+
+        .habit-badge {
+            position: absolute; top: -2px; right: -2px;
+            color: white; border-radius: 50%; width: 14px; height: 14px; display: flex;
+            align-items: center; justify-content: center; font-size: 8px; font-weight: bold;
+            border: 2px solid white; z-index: 20; box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+        }
+        .day-stat { position: absolute; top: 0; right: 0; font-size: 8px; font-weight: 700; }
+
+        .segmented-control { background-color: #E5E5EA; padding: 2px; border-radius: 8px; display: flex; }
+        .segment-btn { flex: 1; text-align: center; padding: 4px 12px; font-size: 13px; font-weight: 600; border-radius: 6px; color: theme('colors.ios.text'); transition: all 0.2s; }
+        .segment-btn.active { background-color: white; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+
+        .tag-btn {
+            padding: 4px 12px; border-radius: 16px; font-size: 12px; font-weight: 600;
+            background-color: #F2F2F7; color: theme('colors.ios.muted'); transition: all 0.2s; border: 1px solid transparent;
+        }
+        .tag-btn.active { background-color: theme('colors.ios.text'); color: white; }
+        .tag-btn.active-daily { background-color: theme('colors.ios.purple'); color: white; }
+
+        .todo-item { animation: slideIn 0.3s ease forwards; }
+        .todo-item.pressing { transform: scale(0.98); background-color: #F9F9F9; transition: transform 0.2s, background-color 0.2s; }
+        @keyframes slideIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        
+        .drag-handle { cursor: grab; touch-action: none; }
+        .drag-handle:active { cursor: grabbing; }
+        .sortable-ghost { opacity: 0.3; background-color: #F2F2F7; border-radius: 16px; }
+
+        .progress-ring__circle { transition: stroke-dashoffset 0.3s; transform: rotate(-90deg); transform-origin: 50% 50%; }
+        .overlay-input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; z-index: 10; }
+        
+        .tracker-drag-handle { touch-action: none; }
+    </style>
+</head>
+<body class="min-h-screen flex items-start justify-center p-0 md:p-8">
+
+    <div class="w-full max-w-5xl md:rounded-[40px] md:shadow-2xl bg-ios-bg overflow-hidden flex flex-col md:flex-row min-h-screen md:min-h-[800px] border-x md:border border-gray-200">
+        
+        <!-- Left Panel: Calendar & Tracker -->
+        <div class="w-full md:w-80 bg-[#F2F2F7] flex flex-col p-6 border-b md:border-b-0 md:border-r border-gray-200 shrink-0">
+            
+            <div class="flex items-center justify-between mb-8">
+                <div>
+                    <h1 id="today-header" class="text-3xl font-extrabold tracking-tight cursor-pointer hover:opacity-70 transition-opacity" title="Return to Today">Today</h1>
+                    <p id="today-date-text" class="text-ios-muted font-medium mt-1"></p>
+                </div>
+                
+                <!-- Left Progress Ring (Always shows TODAY's progress) -->
+                <div id="progress-ring-container-left" class="relative w-14 h-14 transition-opacity duration-300" title="Today's Progress">
+                    <svg class="w-full h-full" viewBox="0 0 36 36">
+                        <path class="text-gray-300" stroke-width="3" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                        <path id="progress-ring-path-left" class="text-black progress-ring__circle" stroke-width="3" stroke-dasharray="100, 100" stroke-dashoffset="100" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" stroke-linecap="round" />
+                    </svg>
+                    <div id="progress-text-left" class="absolute inset-0 flex items-center justify-center text-[10px] font-bold">0%</div>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-3xl p-5 shadow-sm mb-6">
+                <div class="flex justify-between items-center mb-4 px-1">
+                    <h2 id="calendar-month-year" class="text-lg font-bold"></h2>
+                    <div class="flex gap-2">
+                        <button id="prev-month" class="text-ios-text hover:opacity-50 p-1"><i class="ph-bold ph-caret-left text-xl pointer-events-none"></i></button>
+                        <button id="next-month" class="text-ios-text hover:opacity-50 p-1"><i class="ph-bold ph-caret-right text-xl pointer-events-none"></i></button>
+                    </div>
+                </div>
+                <div class="grid grid-cols-7 gap-1 text-center mb-2">
+                    <div class="text-[10px] font-bold text-ios-muted">S</div><div class="text-[10px] font-bold text-ios-muted">M</div>
+                    <div class="text-[10px] font-bold text-ios-muted">T</div><div class="text-[10px] font-bold text-ios-muted">W</div>
+                    <div class="text-[10px] font-bold text-ios-muted">T</div><div class="text-[10px] font-bold text-ios-muted">F</div>
+                    <div class="text-[10px] font-bold text-ios-muted">S</div>
+                </div>
+                <div id="calendar-grid" class="grid grid-cols-7 gap-y-2 gap-x-1"></div>
+            </div>
+
+            <div class="bg-white rounded-3xl p-5 shadow-sm flex-1 flex flex-col min-h-[250px]">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-sm font-bold flex items-center gap-1.5"><i class="ph-fill ph-leaf text-ios-green"></i> Habits Tracker</h3>
+                </div>
+                <div id="tracker-container" class="flex flex-col gap-1 overflow-y-auto pr-1 pb-4"></div>
+            </div>
+        </div>
+
+        <div class="flex-1 bg-white flex flex-col h-screen md:h-auto relative">
+            <div class="p-6 md:p-8 flex flex-col h-full">
+                
+                <!-- Header with Right Progress Ring -->
+                <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-6 shrink-0">
+                    <div class="flex items-center justify-between w-full lg:w-auto gap-4">
+                        <div>
+                            <h2 id="selected-date-display" class="text-2xl font-bold tracking-tight"></h2>
+                            <p id="selected-day-display" class="text-sm text-ios-muted font-medium"></p>
+                        </div>
+                        
+                        <!-- Right Progress Ring (Always shows SELECTED DATE's progress) -->
+                        <div class="relative w-11 h-11 shrink-0" title="Selected Date Progress">
+                            <svg class="w-full h-full" viewBox="0 0 36 36">
+                                <path class="text-gray-100" stroke-width="4" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                                <path id="progress-ring-path-right" class="text-black progress-ring__circle" stroke-width="4" stroke-dasharray="100, 100" stroke-dashoffset="100" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" stroke-linecap="round" />
+                            </svg>
+                            <div id="progress-text-right" class="absolute inset-0 flex items-center justify-center text-[10px] font-bold">0%</div>
+                        </div>
+                    </div>
+                    
+                    <div class="segmented-control w-full lg:w-auto">
+                        <button class="segment-btn active" data-filter="all">All</button>
+                        <button class="segment-btn" data-filter="active">Active</button>
+                        <button class="segment-btn" data-filter="completed">Done</button>
+                    </div>
+                </div>
+
+                <!-- Input Area (Moved to Top) -->
+                <div class="mb-4 shrink-0 bg-[#F2F2F7] rounded-3xl p-3">
+                    <div class="flex gap-2 mb-2.5">
+                        <input type="text" id="todo-input" class="flex-1 bg-transparent px-2 outline-none text-base font-medium placeholder-ios-muted" placeholder="Add a new task...">
+                        <button id="add-btn" class="bg-black text-white w-10 h-10 rounded-xl flex items-center justify-center active:scale-95 transition-transform shrink-0 shadow-sm">
+                            <i class="ph-bold ph-arrow-up text-lg"></i>
+                        </button>
+                    </div>
+                    <!-- Input Tags -->
+                    <div class="flex gap-1.5 overflow-x-auto px-1" id="input-tags">
+                        <button class="tag-btn active !bg-white shadow-sm !text-black !px-2.5 !py-1 !text-[10px]" data-tag="none">None</button>
+                        <button class="tag-btn text-ios-red !px-2.5 !py-1 !text-[10px]" data-tag="important">🔥 Important</button>
+                        <button class="tag-btn text-ios-blue !px-2.5 !py-1 !text-[10px]" data-tag="work">💻 Work</button>
+                        <button class="tag-btn text-ios-orange !px-2.5 !py-1 !text-[10px]" data-tag="personal">☕ Personal</button>
+                        <button class="tag-btn text-ios-purple !px-2.5 !py-1 !text-[10px]" data-tag="daily">🔄 Daily</button>
+                    </div>
+                </div>
+
+                <!-- Tag Filters for List -->
+                <div class="flex gap-2 mb-4 shrink-0 overflow-x-auto pb-2" id="tag-filters-container">
+                    <button class="filter-btn tag-btn bg-ios-text text-white px-3 py-1 text-[11px]" data-tag="all">All Tags</button>
+                    <button class="filter-btn tag-btn px-3 py-1 text-[11px]" data-tag="important">🔥 Important</button>
+                    <button class="filter-btn tag-btn px-3 py-1 text-[11px]" data-tag="work">💻 Work</button>
+                    <button class="filter-btn tag-btn px-3 py-1 text-[11px]" data-tag="personal">☕ Personal</button>
+                    <button class="filter-btn tag-btn px-3 py-1 text-[11px]" data-tag="daily">🔄 Daily</button>
+                </div>
+
+                <!-- Todo List -->
+                <div class="flex-1 overflow-y-auto pr-2 pb-20 md:pb-0" id="todo-container">
+                    <ul id="todo-list" class="space-y-2"></ul>
+                    <div id="empty-state" class="hidden h-full flex flex-col items-center justify-center text-ios-muted opacity-80 mt-6">
+                        <i class="ph-thin ph-check-circle text-6xl mb-3"></i>
+                        <p class="text-base font-medium text-black">All Done!</p>
+                        <p class="text-sm mt-1">Enjoy your day.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="postpone-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 opacity-0 pointer-events-none transition-opacity duration-200">
+        <div class="bg-white rounded-3xl p-6 w-11/12 max-w-sm shadow-2xl transform scale-95 transition-transform duration-200" id="postpone-modal-content">
+            <h3 class="text-xl font-bold mb-2">일정 미루기</h3>
+            <p class="text-sm text-gray-500 mb-6 leading-relaxed">선택하신 날짜로 일정을 옮깁니다.<br><span class="font-semibold text-ios-orange">미루기 카운트</span>를 기록하여 횟수를 늘릴까요?</p>
+            <div class="flex flex-col gap-2.5">
+                <button id="btn-postpone-yes" class="w-full py-3.5 bg-ios-orange text-white rounded-2xl font-bold shadow-sm active:scale-95 transition-transform">예, 미루기 카운트 추가</button>
+                <button id="btn-postpone-no" class="w-full py-3.5 bg-gray-100 text-black hover:bg-gray-200 rounded-2xl font-bold active:scale-95 transition-transform">아니요, 단순 이동</button>
+                <button id="btn-postpone-cancel" class="w-full py-3.5 text-gray-400 font-semibold hover:text-black">취소</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Start Date Modal for Daily Tasks -->
+    <div id="start-date-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 opacity-0 pointer-events-none transition-opacity duration-200">
+        <div class="bg-white rounded-3xl p-6 w-11/12 max-w-sm shadow-2xl transform scale-95 transition-transform duration-200" id="start-date-modal-content">
+            <h3 class="text-xl font-bold mb-2">시작일 설정</h3>
+            <p class="text-sm text-gray-500 mb-6 leading-relaxed">선택하신 날짜부터 매일 반복됩니다.</p>
+            <input type="date" id="modal-start-date-input" class="w-full bg-[#F2F2F7] rounded-xl px-4 py-3 mb-6 focus:outline-none font-medium">
+            <div class="flex gap-2.5">
+                <button id="btn-start-date-cancel" class="flex-1 py-3.5 bg-gray-100 text-black hover:bg-gray-200 rounded-2xl font-bold active:scale-95 transition-transform">취소</button>
+                <button id="btn-start-date-save" class="flex-1 py-3.5 bg-ios-purple text-white rounded-2xl font-bold shadow-sm active:scale-95 transition-transform">저장</button>
+            </div>
+            <input type="hidden" id="modal-start-target-id">
+        </div>
+    </div>
+
+    <script>
+        // PWA Setup Safely
+        try {
+            const manifestJSON = {
+              "name": "Minimal Todo", "short_name": "Todo", "start_url": ".",
+              "display": "standalone", "background_color": "#F2F2F7", "theme_color": "#F2F2F7",
+              "icons": [{
+                  "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23000'/%3E%3Cpath d='M30 50 L45 65 L70 35' stroke='%23fff' stroke-width='8' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E",
+                  "sizes": "192x192 512x512", "type": "image/svg+xml"
+              }]
+            };
+            const manifestURL = URL.createObjectURL(new Blob([JSON.stringify(manifestJSON)], {type: 'application/json'}));
+            const link = document.createElement('link'); link.rel = 'manifest'; link.href = manifestURL;
+            document.head.appendChild(link);
+        } catch(e) { console.warn("PWA manifest init blocked:", e); }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            let todos = [];
+            try { todos = JSON.parse(localStorage.getItem('minimalTodos')) || []; } 
+            catch(e) { console.warn("LocalStorage access blocked."); }
+
+            let currentDate = new Date(); 
+            let selectedDate = new Date(); 
+            let currentFilter = 'all'; 
+            let currentTagFilter = 'all'; 
+            let selectedTagForInput = 'none'; 
+            let selectedHabitId = null; 
+            let pendingMove = null; 
+
+            const DOM = {
+                calMonthYear: document.getElementById('calendar-month-year'),
+                calGrid: document.getElementById('calendar-grid'),
+                prevMonth: document.getElementById('prev-month'),
+                nextMonth: document.getElementById('next-month'),
+                selDateDisp: document.getElementById('selected-date-display'),
+                selDayDisp: document.getElementById('selected-day-display'),
+                todayText: document.getElementById('today-date-text'),
+                todayHeader: document.getElementById('today-header'),
+                todoList: document.getElementById('todo-list'),
+                emptyState: document.getElementById('empty-state'),
+                todoInput: document.getElementById('todo-input'),
+                addBtn: document.getElementById('add-btn'),
+                tracker: document.getElementById('tracker-container'),
+                ringLeft: document.getElementById('progress-ring-path-left'),
+                textLeft: document.getElementById('progress-text-left'),
+                ringRight: document.getElementById('progress-ring-path-right'),
+                textRight: document.getElementById('progress-text-right'),
+                modal: document.getElementById('postpone-modal'),
+                modalContent: document.getElementById('postpone-modal-content'),
+                startModal: document.getElementById('start-date-modal'),
+                startModalContent: document.getElementById('start-date-modal-content')
+            };
+
+            const saveTodos = () => {
+                try { localStorage.setItem('minimalTodos', JSON.stringify(todos)); } catch(e) {}
+            };
+            
+            const formatDate = (date) => {
+                const d = new Date(date);
+                return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+            };
+            const getDayName = (date) => ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][new Date(date).getDay()];
+            const getMonthName = (date) => ['January','February','March','April','May','June','July','August','September','October','November','December'][new Date(date).getMonth()];
+            
+            const escapeHTML = (str) => {
+                if(!str) return '';
+                return String(str).replace(/[&<>'"]/g, tag => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'}[tag] || tag));
+            };
+
+            const habitColors = ['#AF52DE', '#FF2D55', '#FF9500', '#34C759', '#007AFF', '#5856D6', '#FF3B30'];
+
+            const getTagInfo = (tag) => {
+                switch(tag) {
+                    case 'important': return { icon: '🔥', text: 'Important', color: 'text-ios-red', bg: 'bg-[#FF3B30]/10' };
+                    case 'work': return { icon: '💻', text: 'Work', color: 'text-ios-blue', bg: 'bg-[#007AFF]/10' };
+                    case 'personal': return { icon: '☕', text: 'Personal', color: 'text-ios-orange', bg: 'bg-[#FF9500]/10' };
+                    case 'daily': return { icon: '🔄', text: 'Daily', color: 'text-ios-purple', bg: 'bg-[#AF52DE]/10' };
+                    default: return { icon: '🏷️', text: '태그 없음', color: 'text-ios-muted', bg: 'bg-transparent border border-dashed border-gray-300' };
+                }
+            };
+
+            const updateDateDisplay = () => {
+                DOM.todayText.textContent = `${getMonthName(new Date())} ${new Date().getDate()}`;
+                DOM.selDateDisp.textContent = `${getMonthName(selectedDate)} ${selectedDate.getDate()}`;
+                DOM.selDayDisp.textContent = getDayName(selectedDate);
+            };
+
+            const renderCalendar = () => {
+                DOM.calMonthYear.textContent = `${getMonthName(currentDate)} ${currentDate.getFullYear()}`;
+                DOM.calGrid.innerHTML = '';
+                
+                const year = currentDate.getFullYear();
+                const month = currentDate.getMonth();
+                
+                const firstDay = new Date(year, month, 1).getDay();
+                const daysInMonth = new Date(year, month + 1, 0).getDate();
+                
+                const todayStr = formatDate(new Date());
+                const selectedDateStr = formatDate(selectedDate);
+                
+                for (let i = 0; i < firstDay; i++) {
+                    const emptyDiv = document.createElement('div');
+                    emptyDiv.className = 'calendar-day empty';
+                    DOM.calGrid.appendChild(emptyDiv);
+                }
+                
+                for (let i = 1; i <= daysInMonth; i++) {
+                    const d = new Date(year, month, i);
+                    const dateStr = formatDate(d);
+                    
+                    const dayDiv = document.createElement('div');
+                    dayDiv.className = 'calendar-day';
+                    
+                    let dayHtml = `<span>${i}</span>`;
+                    
+                    if (selectedHabitId) {
+                        const habit = todos.find(t => t.id === selectedHabitId);
+                        if (habit && habit.completedDates && habit.completedDates.includes(dateStr)) {
+                            let habitColor = '#AF52DE';
+                            const dailyTodos = todos.filter(t => t.tag === 'daily').sort((a,b) => (a.habitOrder !== undefined ? a.habitOrder : 999) - (b.habitOrder !== undefined ? b.habitOrder : 999));
+                            const habitIndex = dailyTodos.findIndex(t => t.id === selectedHabitId);
+                            if(habitIndex !== -1) habitColor = habitColors[habitIndex % habitColors.length];
+
+                            dayHtml += `<div class="habit-badge" style="background-color: ${habitColor};"><i class="ph-bold ph-check text-white text-[8px]"></i></div>`;
+                        }
+                    }
+
+                    if (dateStr === todayStr) dayDiv.classList.add('today');
+                    if (dateStr === selectedDateStr) dayDiv.classList.add('selected');
+                    
+                    const dayTodos = todos.filter(t => t.date === dateStr && t.tag !== 'daily');
+                    if (dayTodos.length > 0) {
+                        const total = dayTodos.length;
+                        const completed = dayTodos.filter(t => t.completed).length;
+                        dayHtml += `<div class="day-stat" title="${completed}/${total} 완료">${completed}/${total}</div>`;
+                    }
+                    
+                    dayDiv.innerHTML = dayHtml;
+                    
+                    dayDiv.addEventListener('click', () => {
+                        selectedDate = new Date(year, month, i);
+                        updateDateDisplay();
+                        renderCalendar();
+                        renderTodos();
+                        updateProgressRings();
+                    });
+                    
+                    DOM.calGrid.appendChild(dayDiv);
+                }
+            };
+
+            const updateProgressRings = () => {
+                // Left Ring: Always TODAY
+                const todayStr = formatDate(new Date());
+                const todayTodos = todos.filter(t => t.date === todayStr && t.tag !== 'daily');
+                const tTotal = todayTodos.length;
+                const tCompleted = todayTodos.filter(t => t.completed).length;
+                const tPct = tTotal === 0 ? 0 : Math.round((tCompleted / tTotal) * 100);
+                DOM.ringLeft.style.strokeDashoffset = 100 - tPct;
+                DOM.textLeft.textContent = `${tPct}%`;
+
+                // Right Ring: Always SELECTED DATE
+                const selDateStr = formatDate(selectedDate);
+                const selTodos = todos.filter(t => t.date === selDateStr && t.tag !== 'daily');
+                const sTotal = selTodos.length;
+                const sCompleted = selTodos.filter(t => t.completed).length;
+                const sPct = sTotal === 0 ? 0 : Math.round((sCompleted / sTotal) * 100);
+                DOM.ringRight.style.strokeDashoffset = 100 - sPct;
+                DOM.textRight.textContent = `${sPct}%`;
+            };
+
+            let trackerSortable = null;
+
+            const renderTracker = () => {
+                let dailyTodos = todos.filter(t => t.tag === 'daily');
+                if (dailyTodos.length === 0) {
+                    DOM.tracker.innerHTML = `<div class="text-xs text-ios-muted text-center py-6 bg-[#F2F2F7] rounded-2xl">Add a 'Daily' task<br>to see tracking here.</div>`;
+                    return;
+                }
+
+                const dates = [];
+                for (let i = -3; i <= 3; i++) {
+                    const d = new Date(); d.setDate(d.getDate() + i); dates.push(d);
+                }
+
+                let headerHtml = `<div class="flex justify-between px-1 mb-2 ml-[35%] text-[9px] text-ios-muted font-bold uppercase">`;
+                dates.forEach(d => {
+                    const isToday = formatDate(d) === formatDate(new Date());
+                    headerHtml += `<div class="w-6 flex items-center justify-center rounded ${isToday ? 'bg-ios-blue/10 text-ios-blue py-0.5' : ''}">${['S','M','T','W','T','F','S'][d.getDay()]}</div>`;
+                });
+                headerHtml += `</div>`;
+                
+                // 순서(habitOrder)를 기반으로 정렬
+                dailyTodos.sort((a, b) => (a.habitOrder !== undefined ? a.habitOrder : 999) - (b.habitOrder !== undefined ? b.habitOrder : 999));
+
+                let html = headerHtml;
+                html += `<div id="tracker-list-content" class="flex flex-col gap-1">`;
+                
+                dailyTodos.forEach((todo, index) => {
+                    const color = habitColors[index % habitColors.length];
+                    const isSelected = selectedHabitId === todo.id;
+
+                    let dotsHtml = dates.map(d => {
+                        const dateStr = formatDate(d);
+                        const isStarted = new Date(todo.date) <= d; 
+                        const isCompleted = todo.completedDates && todo.completedDates.includes(dateStr);
+                        const isToday = dateStr === formatDate(new Date());
+                        
+                        let dotContent = '';
+                        if (!isStarted) {
+                            dotContent = `<div class="w-2.5 h-2.5 rounded-full bg-transparent border border-dashed border-[#E5E5EA]"></div>`;
+                        } else if (isCompleted) {
+                            dotContent = `<div class="w-2.5 h-2.5 rounded-full" style="background-color: ${color};"></div>`;
+                        } else {
+                            dotContent = `<div class="w-2.5 h-2.5 rounded-full bg-[#E5E5EA]"></div>`;
+                        }
+
+                        return `<div class="w-6 h-6 flex items-center justify-center rounded-md ${isToday ? 'bg-gray-50' : ''}">${dotContent}</div>`;
+                    }).join('');
+
+                    let rankIcon = '';
+                    if (index === 0) rankIcon = '🥇';
+                    else if (index === 1) rankIcon = '🥈';
+                    else if (index === 2) rankIcon = '🥉';
+                    else rankIcon = `<span class="text-[9px] font-bold text-gray-400">${index + 1}</span>`;
+
+                    html += `
+                        <div class="tracker-row flex justify-between items-center py-2 px-2 rounded-xl cursor-pointer transition-all ${isSelected ? 'shadow-sm' : 'hover:bg-gray-50'}" style="${isSelected ? `background-color: ${color}15; border: 1px solid ${color}30;` : 'border: 1px solid transparent;'}" data-id="${todo.id}">
+                            <div class="flex flex-1 items-center overflow-hidden pr-2">
+                                <div class="tracker-drag-handle text-gray-300 hover:text-black shrink-0 cursor-grab active:cursor-grabbing p-1 -ml-1" title="드래그하여 순위 변경">
+                                    <i class="ph-bold ph-dots-six-vertical text-sm pointer-events-none"></i>
+                                </div>
+                                <div class="mr-1.5 shrink-0 flex items-center justify-center w-4 h-4 bg-white shadow-sm rounded-full text-[10px]">${rankIcon}</div>
+                                <div class="truncate text-[11px] font-semibold" style="color: ${isSelected ? color : '#8E8E93'}" title="${escapeHTML(todo.text)}">${escapeHTML(todo.text)}</div>
+                            </div>
+                            <div class="flex justify-between shrink-0 px-1 pointer-events-none">${dotsHtml}</div>
+                        </div>
+                    `;
+                });
+                html += `</div>`;
+                DOM.tracker.innerHTML = html;
+                
+                DOM.tracker.querySelectorAll('.tracker-row').forEach(row => {
+                    row.addEventListener('click', (e) => {
+                        if (e.target.closest('.tracker-drag-handle')) return; 
+                        const id = e.currentTarget.dataset.id;
+                        selectedHabitId = (selectedHabitId === id) ? null : id;
+                        renderTracker(); renderCalendar(); 
+                    });
+                });
+
+                // 트래커 목록에 드래그 앤 드롭 기능(Sortable) 초기화
+                const trackerListEl = DOM.tracker.querySelector('#tracker-list-content');
+                if (trackerListEl) {
+                    try {
+                        if (trackerSortable) trackerSortable.destroy();
+                        trackerSortable = new Sortable(trackerListEl, {
+                            handle: '.tracker-drag-handle',
+                            animation: 150,
+                            ghostClass: 'sortable-ghost',
+                            onEnd: function () {
+                                const newOrderIds = Array.from(trackerListEl.querySelectorAll('.tracker-row')).map(el => el.dataset.id);
+                                todos = todos.map(todo => {
+                                    if (todo.tag === 'daily') {
+                                        const orderIndex = newOrderIds.indexOf(todo.id);
+                                        if (orderIndex !== -1) return { ...todo, habitOrder: orderIndex };
+                                    }
+                                    return todo;
+                                });
+                                saveTodos();
+                                renderTracker(); // 변경된 순위 즉시 반영
+                                renderTodos(); // 우측 리스트에도 정렬 반영
+                            }
+                        });
+                    } catch(e) { console.warn("Tracker sortable init error"); }
+                }
+            };
+
+            const createTodoElement = (todo, isCompleted) => {
+                const li = document.createElement('li');
+                li.className = 'todo-item group bg-white border border-ios-border rounded-2xl p-4 flex flex-col gap-2 shadow-sm transition-all relative overflow-hidden';
+                li.dataset.id = todo.id;
+                const badgeInfo = getTagInfo(todo.tag);
+                
+                const postponeBadge = (todo.tag !== 'daily' && todo.postponedCount > 0) ? `<span class="inline-flex items-center ml-2 px-1.5 py-0.5 rounded text-[9px] font-bold bg-orange-100 text-ios-orange whitespace-nowrap">미룸 ${todo.postponedCount}회</span>` : '';
+
+                let statsHtml = '';
+                let moveButtonHtml = '';
+                
+                if (todo.tag === 'daily') {
+                    let totalDays = 0;
+                    let rate = 0;
+                    let completedCount = todo.completedDates ? todo.completedDates.length : 0;
+                    
+                    const start = new Date(todo.date);
+                    start.setHours(0,0,0,0);
+                    const now = new Date();
+                    now.setHours(0,0,0,0);
+                    
+                    let statsText = '';
+                    if (now >= start) {
+                        totalDays = Math.floor((now - start) / (1000 * 60 * 60 * 24)) + 1;
+                        rate = totalDays > 0 ? Math.round((completedCount / totalDays) * 100) : 0;
+                        statsText = `누적 ${completedCount}일 (달성률 ${rate}%)`;
+                    } else {
+                        statsText = `시작 예정`;
+                    }
+                    
+                    statsHtml = `<div class="text-[10px] text-ios-muted font-medium flex items-center gap-1 truncate w-full lg:w-auto"><i class="ph-fill ph-flag-checkered text-[#AF52DE] shrink-0"></i> <span class="truncate">시작: ${todo.date.slice(5)} • ${statsText}</span></div>`;
+                    
+                    moveButtonHtml = ``; // 길게 누르기로 대체되어 달력 버튼 삭제
+                } else {
+                    moveButtonHtml = `
+                        <div class="relative flex items-center">
+                            <input type="date" class="date-picker-input" id="date-${todo.id}" value="${todo.date}">
+                            <button class="move-date-btn text-ios-muted hover:text-ios-blue opacity-100 md:opacity-0 group-hover:opacity-100 transition-all focus:outline-none p-2 rounded-xl hover:bg-gray-100" title="다른 날짜로 미루기">
+                                <i class="ph-bold ph-calendar-blank text-xl pointer-events-none"></i>
+                            </button>
+                        </div>
+                    `;
+                }
+
+                li.innerHTML = `
+                    <div class="flex items-center gap-2 w-full">
+                        <div class="drag-handle text-ios-muted hover:text-black shrink-0 transition-colors py-2 pl-1"><i class="ph-bold ph-dots-six-vertical text-xl pointer-events-none"></i></div>
+                        <input type="checkbox" class="ios-checkbox shrink-0 checkbox-el" ${isCompleted ? 'checked' : ''}>
+                        <div class="flex flex-col flex-1 overflow-hidden min-w-0 py-0.5">
+                            <div class="flex items-center w-full min-w-0 gap-1.5">
+                                <span class="text-[15px] font-semibold truncate ${isCompleted ? 'completed-text' : ''}" title="${escapeHTML(todo.text)}">${escapeHTML(todo.text)}</span>
+                                ${postponeBadge}
+                            </div>
+                            <div class="mt-1 flex flex-col lg:flex-row lg:items-center relative w-full gap-1.5">
+                                <div class="relative inline-flex shrink-0 w-max">
+                                    <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider ${badgeInfo.bg} ${badgeInfo.color}">
+                                        <span>${badgeInfo.text}</span><i class="ph-bold ph-caret-down text-[8px] ml-0.5"></i>
+                                    </span>
+                                    <select class="tag-select overlay-input text-[10px]" title="태그 변경">
+                                        <option value="none" ${todo.tag === 'none' ? 'selected' : ''}>🏷️ 태그 추가 (None)</option>
+                                        <option value="important" ${todo.tag === 'important' ? 'selected' : ''}>🔥 중요 (Important)</option>
+                                        <option value="work" ${todo.tag === 'work' ? 'selected' : ''}>💻 업무 (Work)</option>
+                                        <option value="personal" ${todo.tag === 'personal' ? 'selected' : ''}>☕ 개인 (Personal)</option>
+                                        <option value="daily" ${todo.tag === 'daily' ? 'selected' : ''}>🔄 매일 (Daily)</option>
+                                    </select>
+                                </div>
+                                ${statsHtml}
+                            </div>
+                        </div>
+                        <div class="flex items-center shrink-0 ml-1 gap-1">
+                            ${moveButtonHtml}
+                            <button class="delete-btn text-ios-muted hover:text-ios-red opacity-100 md:opacity-0 group-hover:opacity-100 transition-all focus:outline-none p-2 rounded-xl hover:bg-red-50" title="삭제">
+                                <i class="ph-bold ph-trash text-xl pointer-events-none"></i>
+                            </button>
+                        </div>
+                    </div>
+                `;
+
+                // Add Event Listeners
+                li.querySelector('.checkbox-el').addEventListener('change', () => toggleTodo(todo.id));
+                li.querySelector('.delete-btn').addEventListener('click', () => deleteTodo(todo.id));
+                li.querySelector('.tag-select').addEventListener('change', (e) => changeTag(todo.id, e.target.value));
+                
+                if (todo.tag === 'daily') {
+                    let pressTimer;
+                    const startPress = (e) => {
+                        if (e.target.tagName.toLowerCase() === 'input' || e.target.tagName.toLowerCase() === 'button' || e.target.closest('button') || e.target.closest('.drag-handle') || e.target.tagName.toLowerCase() === 'select') return;
+                        li.classList.add('pressing');
+                        pressTimer = setTimeout(() => { li.classList.remove('pressing'); openStartDateModal(todo.id, todo.date); }, 500);
+                    };
+                    const cancelPress = () => { li.classList.remove('pressing'); clearTimeout(pressTimer); };
+                    li.addEventListener('mousedown', startPress);
+                    li.addEventListener('touchstart', startPress, {passive: true});
+                    li.addEventListener('mouseup', cancelPress);
+                    li.addEventListener('mouseleave', cancelPress);
+                    li.addEventListener('touchend', cancelPress);
+                    li.addEventListener('touchcancel', cancelPress);
+                } else {
+                    const dateInput = li.querySelector(`#date-${todo.id}`);
+                    const moveBtn = li.querySelector('.move-date-btn');
+                    moveBtn.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        try { dateInput.showPicker(); } catch(err) { dateInput.click(); }
+                    });
+                    
+                    dateInput.addEventListener('change', (e) => {
+                        const newDate = e.target.value;
+                        if (newDate && newDate !== todo.date) {
+                            triggerMoveTodo(todo.id, newDate);
+                        }
+                    });
+                }
+
+                return li;
+            };
+
+            const renderTodos = () => {
+                DOM.todoList.innerHTML = '';
+                const selDateStr = formatDate(selectedDate);
+                
+                let filtered = todos.filter(t => (t.tag === 'daily') ? new Date(t.date) <= new Date(selDateStr) : t.date === selDateStr);
+
+                if (currentFilter === 'active') filtered = filtered.filter(t => t.tag === 'daily' ? !(t.completedDates && t.completedDates.includes(selDateStr)) : !t.completed);
+                else if (currentFilter === 'completed') filtered = filtered.filter(t => t.tag === 'daily' ? (t.completedDates && t.completedDates.includes(selDateStr)) : t.completed);
+
+                if (currentTagFilter !== 'all') filtered = filtered.filter(t => t.tag === currentTagFilter);
+
+                filtered.sort((a, b) => {
+                    // 1. 최상단: 중요 태그
+                    const isAImp = a.tag === 'important', isBImp = b.tag === 'important';
+                    if (isAImp && !isBImp) return -1;
+                    if (!isAImp && isBImp) return 1;
+
+                    // 2. 매일 태그 그룹 내부 순서 (사용자가 트래커에서 지정한 순위 반영)
+                    const isADaily = a.tag === 'daily', isBDaily = b.tag === 'daily';
+                    if (isADaily && isBDaily) {
+                        const rA = a.habitOrder !== undefined ? a.habitOrder : 999;
+                        const rB = b.habitOrder !== undefined ? b.habitOrder : 999;
+                        return rA - rB;
+                    }
+
+                    // 3. 그 외 일반 할일 (드래그 정렬 순서 유지)
+                    const orderA = a.orderIndex !== undefined ? a.orderIndex : 9999;
+                    const orderB = b.orderIndex !== undefined ? b.orderIndex : 9999;
+                    return orderA - orderB;
+                });
+
+                if (filtered.length === 0) {
+                    DOM.emptyState.classList.remove('hidden'); DOM.todoList.classList.add('hidden');
+                } else {
+                    DOM.emptyState.classList.add('hidden'); DOM.todoList.classList.remove('hidden');
+                    filtered.forEach(todo => {
+                        const isCompleted = todo.tag === 'daily' ? (todo.completedDates && todo.completedDates.includes(selDateStr)) : todo.completed;
+                        DOM.todoList.appendChild(createTodoElement(todo, isCompleted));
+                    });
+                }
+                updateProgressRings();
+            };
+
+            const changeTag = (id, newTag) => {
+                const selDateStr = formatDate(selectedDate);
+                todos = todos.map(todo => {
+                    if (todo.id === id) {
+                        if (newTag === 'daily' && todo.tag !== 'daily') return { ...todo, tag: newTag, date: selDateStr, completedDates: todo.completed ? [selDateStr] : [] };
+                        if (todo.tag === 'daily' && newTag !== 'daily') return { ...todo, tag: newTag, date: selDateStr, completed: todo.completedDates && todo.completedDates.includes(selDateStr), habitRank: null };
+                        return { ...todo, tag: newTag };
+                    }
+                    return todo;
+                });
+                saveTodos(); renderTodos(); renderTracker(); renderCalendar();
+            };
+
+            const triggerMoveTodo = (id, newDate) => {
+                const selDateStr = formatDate(selectedDate);
+                if (!newDate || newDate === selDateStr) return;
+                pendingMove = { id, newDate };
+                DOM.modal.classList.remove('opacity-0', 'pointer-events-none');
+                DOM.modalContent.classList.replace('scale-95', 'scale-100');
+            };
+
+            const executeMove = (incrementCount) => {
+                if (!pendingMove) return;
+                const { id, newDate } = pendingMove;
+                const element = document.querySelector(`[data-id="${id}"]`);
+                if (element) {
+                    element.style.transform = 'translateX(30px)'; element.style.opacity = '0';
+                    setTimeout(() => {
+                        todos = todos.map(t => t.id === id ? { ...t, date: newDate, postponedCount: incrementCount ? (t.postponedCount || 0) + 1 : (t.postponedCount || 0) } : t);
+                        saveTodos(); renderTodos(); renderCalendar(); renderTracker();
+                    }, 250);
+                }
+                closeModal();
+            };
+
+            const closeModal = () => {
+                DOM.modal.classList.add('opacity-0', 'pointer-events-none');
+                DOM.modalContent.classList.replace('scale-100', 'scale-95');
+                renderTodos(); pendingMove = null;
+            };
+
+            document.getElementById('btn-postpone-yes').addEventListener('click', () => executeMove(true));
+            document.getElementById('btn-postpone-no').addEventListener('click', () => executeMove(false));
+            document.getElementById('btn-postpone-cancel').addEventListener('click', closeModal);
+
+            const openStartDateModal = (id, currentStartDate) => {
+                if (navigator.vibrate) navigator.vibrate(50);
+                document.getElementById('modal-start-target-id').value = id;
+                document.getElementById('modal-start-date-input').value = currentStartDate;
+                DOM.startModal.classList.remove('opacity-0', 'pointer-events-none');
+                DOM.startModalContent.classList.replace('scale-95', 'scale-100');
+            };
+
+            const closeStartDateModal = () => {
+                DOM.startModal.classList.add('opacity-0', 'pointer-events-none');
+                DOM.startModalContent.classList.replace('scale-100', 'scale-95');
+            };
+
+            document.getElementById('btn-start-date-cancel').addEventListener('click', closeStartDateModal);
+            document.getElementById('btn-start-date-save').addEventListener('click', () => {
+                const id = document.getElementById('modal-start-target-id').value;
+                const newDate = document.getElementById('modal-start-date-input').value;
+                if(newDate) {
+                    todos = todos.map(t => t.id === id ? { ...t, date: newDate } : t);
+                    saveTodos(); renderTodos(); renderTracker(); renderCalendar();
+                }
+                closeStartDateModal();
+            });
+
+            const addTodo = () => {
+                const text = DOM.todoInput.value.trim();
+                if (!text) return;
+                const newTodo = { id: Date.now().toString(), text, date: formatDate(selectedDate), completed: false, tag: selectedTagForInput, postponedCount: 0 };
+                if (newTodo.tag === 'daily') newTodo.completedDates = [];
+                todos.push(newTodo);
+                saveTodos(); DOM.todoInput.value = '';
+                
+                // Bug Fix: 입력 완료 후 즉시 태그 버튼 상태 초기화(없음)
+                const noneTagBtn = document.querySelector('#input-tags .tag-btn[data-tag="none"]');
+                if (noneTagBtn) noneTagBtn.click();
+                
+                renderTodos(); renderCalendar(); if(newTodo.tag === 'daily') renderTracker();
+            };
+
+            const toggleTodo = (id) => {
+                const selDateStr = formatDate(selectedDate);
+                todos = todos.map(todo => {
+                    if (todo.id === id) {
+                        if (todo.tag === 'daily') {
+                            let dates = todo.completedDates || [];
+                            return { ...todo, completedDates: dates.includes(selDateStr) ? dates.filter(d => d !== selDateStr) : [...dates, selDateStr] };
+                        } else {
+                            return { ...todo, completed: !todo.completed };
+                        }
+                    }
+                    return todo;
+                });
+                saveTodos(); renderTodos(); renderCalendar(); renderTracker();
+            };
+
+            const deleteTodo = (id) => {
+                const element = document.querySelector(`[data-id="${id}"]`);
+                if (element) {
+                    element.style.transform = 'translateY(10px) scale(0.95)'; element.style.opacity = '0';
+                    setTimeout(() => {
+                        todos = todos.filter(t => t.id !== id);
+                        if(selectedHabitId === id) selectedHabitId = null;
+                        saveTodos(); renderTodos(); renderCalendar(); renderTracker();
+                    }, 200);
+                }
+            };
+
+            DOM.todayHeader.addEventListener('click', () => { currentDate = new Date(); selectedDate = new Date(); renderCalendar(); renderTodos(); renderTracker(); updateDateDisplay(); updateProgressRings(); });
+            DOM.addBtn.addEventListener('click', addTodo);
+            DOM.todoInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') addTodo(); });
+
+            document.querySelectorAll('#input-tags .tag-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    document.querySelectorAll('#input-tags .tag-btn').forEach(b => {
+                        b.classList.remove('active', 'active-daily', '!bg-white', '!text-black', 'shadow-sm', 'text-ios-red', 'text-ios-blue', 'text-ios-orange', 'text-ios-purple', 'text-ios-muted', '!bg-ios-purple', '!text-white');
+                        if(b.dataset.tag === 'important') b.classList.add('text-ios-red');
+                        if(b.dataset.tag === 'work') b.classList.add('text-ios-blue');
+                        if(b.dataset.tag === 'personal') b.classList.add('text-ios-orange');
+                        if(b.dataset.tag === 'daily') b.classList.add('text-ios-purple');
+                        if(b.dataset.tag === 'none') b.classList.add('text-ios-muted');
+                    });
+                    const target = e.currentTarget;
+                    target.className = `tag-btn active !bg-white !text-black shadow-sm !px-2.5 !py-1 !text-[10px]`;
+                    selectedTagForInput = target.dataset.tag;
+                });
+            });
+
+            DOM.prevMonth.addEventListener('click', () => { currentDate.setMonth(currentDate.getMonth() - 1); renderCalendar(); });
+            DOM.nextMonth.addEventListener('click', () => { currentDate.setMonth(currentDate.getMonth() + 1); renderCalendar(); });
+
+            document.querySelectorAll('.segment-btn').forEach(tab => {
+                tab.addEventListener('click', (e) => {
+                    document.querySelectorAll('.segment-btn').forEach(t => t.classList.remove('active'));
+                    e.target.classList.add('active'); currentFilter = e.target.dataset.filter; renderTodos();
+                });
+            });
+
+            document.querySelectorAll('.filter-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    document.querySelectorAll('.filter-btn').forEach(t => { t.classList.remove('bg-ios-text', 'text-white'); t.classList.add('text-ios-muted'); });
+                    const target = e.currentTarget;
+                    target.classList.add('bg-ios-text', 'text-white'); target.classList.remove('text-ios-muted');
+                    currentTagFilter = target.dataset.tag; renderTodos();
+                });
+            });
+
+            try {
+                new Sortable(DOM.todoList, {
+                    handle: '.drag-handle', animation: 200, ghostClass: 'sortable-ghost',
+                    onEnd: function () {
+                        const newOrderIds = Array.from(DOM.todoList.querySelectorAll('.todo-item')).map(el => el.dataset.id);
+                        const filteredMap = new Map();
+                        newOrderIds.forEach((id, index) => { const t = todos.find(t => t.id === id); if(t) filteredMap.set(id, { ...t, orderIndex: index }); });
+                        const newTodos = [];
+                        todos.forEach(t => { if (!filteredMap.has(t.id)) newTodos.push(t); });
+                        Array.from(filteredMap.values()).sort((a, b) => a.orderIndex - b.orderIndex).forEach(item => { delete item.orderIndex; newTodos.push(item); });
+                        todos = newTodos; saveTodos();
+                    },
+                });
+            } catch(e) { console.warn("Sortable init failed"); }
+
+            updateDateDisplay(); renderCalendar(); renderTodos(); renderTracker(); updateProgressRings();
+        });
+    </script>
+</body>
+</html>
